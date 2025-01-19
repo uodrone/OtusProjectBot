@@ -50,9 +50,11 @@ namespace HRProBot.Controllers
         /// <returns></returns>
         private static async Task UpdateReceived(ITelegramBotClient botClient, Update update, CancellationToken token)
         {
-            var me = await botClient.GetMe();
-            var botName = me.FirstName; //имя бота
+            var Me = await botClient.GetMe();
             var UserParams = update.Message?.From;
+            string? BotName = Me.FirstName; //имя бота            
+            long ChatId = update.Message.Chat.Id;
+            var BotUser = new BotUser();
 
             if (UserParams is null)
             {
@@ -71,19 +73,19 @@ namespace HRProBot.Controllers
                             StartMessage(botClient, UserParams, update);
                             break;
                         case "Подписаться на курс":
-                            botClient.SendTextMessageAsync(update.Message.Chat.Id, $"Вы подписаны на курс");
+                            botClient.SendTextMessageAsync(ChatId, $"Вы подписаны на курс");
                             break;
                         case "Узнать об экспертах":
-                            botClient.SendTextMessageAsync(update.Message.Chat.Id, $"Ознакомьтесь с нашими экспертами");
+                            botClient.SendTextMessageAsync(ChatId, $"Ознакомьтесь с нашими экспертами");
                             break;
                         case "О системе HR Pro":
-                            botClient.SendTextMessageAsync(update.Message.Chat.Id, $"Вот больше информации о продукте HR Pro");
+                            botClient.SendTextMessageAsync(ChatId, $"Вот больше информации о продукте HR Pro");
                             break;
                         case "Задать вопрос эксперту":
-                            botClient.SendTextMessageAsync(update.Message.Chat.Id, $"Наш эксперт ответит на ваш вопрос в течение 3 рабочих дней.");
+                            botClient.SendTextMessageAsync(ChatId, $"Наш эксперт ответит на ваш вопрос в течение 3 рабочих дней. Чтобы сформировать обращение мы должны знать ваши данные.");
                             break;
                         default:
-                            botClient.SendTextMessageAsync(update.Message.Chat.Id, $"Попробуйте еще раз! Ник: {UserParams.Username}, Имя: {UserParams.FirstName}, id: {UserParams.Id} ");
+                            botClient.SendTextMessageAsync(ChatId, $"Попробуйте еще раз! Ник: {UserParams.Username}, Имя: {UserParams.FirstName}, id: {UserParams.Id} ");
                             break;
                     }
                 }
@@ -133,6 +135,13 @@ namespace HRProBot.Controllers
                 botClient.SendTextMessageAsync(update.Message.Chat.Id, "Пользователь является администратором и ему доступны особые команды");
             }
             botClient.SendTextMessageAsync(update.Message.Chat.Id, StartMessage, replyMarkup: Buttons);            
+        }
+
+        static void GetUserData(ITelegramBotClient botClient, Update update, BotUser BotUser)
+        {
+            long ChatId = update.Message.Chat.Id;            
+            botClient.SendTextMessageAsync(ChatId, "Введите ваше имя");
+            BotUser.Name = update.Message.Text;
         }
     }
 }
