@@ -64,18 +64,27 @@ namespace HRProBot.Controllers
             {
                 if (update.Message.Type == MessageType.Text)
                 {
-                    if (update.Message.Text == "/start")
-                    {
-                        StartMessage(botClient, UserParams, update);
-                    }
 
-                    if (update.Message.Text == "Подписаться на курс")
+                    switch (update.Message.Text)
                     {
-                        botClient.SendTextMessageAsync(update.Message.Chat.Id, $"Вы подписаны на курс");
-                    }
-                    else
-                    {
-                        botClient.SendTextMessageAsync(update.Message.Chat.Id, $"Попробуйте еще раз! Ник: {UserParams.Username}, Имя: {UserParams.FirstName}, id: {UserParams.Id} ");
+                        case "/start":
+                            StartMessage(botClient, UserParams, update);
+                            break;
+                        case "Подписаться на курс":
+                            botClient.SendTextMessageAsync(update.Message.Chat.Id, $"Вы подписаны на курс");
+                            break;
+                        case "Узнать об экспертах":
+                            botClient.SendTextMessageAsync(update.Message.Chat.Id, $"Ознакомьтесь с нашими экспертами");
+                            break;
+                        case "О системе HR Pro":
+                            botClient.SendTextMessageAsync(update.Message.Chat.Id, $"Вот больше информации о продукте HR Pro");
+                            break;
+                        case "Задать вопрос эксперту":
+                            botClient.SendTextMessageAsync(update.Message.Chat.Id, $"Наш эксперт ответит на ваш вопрос в течение 3 рабочих дней.");
+                            break;
+                        default:
+                            botClient.SendTextMessageAsync(update.Message.Chat.Id, $"Попробуйте еще раз! Ник: {UserParams.Username}, Имя: {UserParams.FirstName}, id: {UserParams.Id} ");
+                            break;
                     }
                 }
             }
