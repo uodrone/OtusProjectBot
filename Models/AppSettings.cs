@@ -4,5 +4,6 @@
     {
         public string TlgBotToken { get; set; }
         public string TlgBotAdministrators { get; set; }
+        public string GoogleSheetsTableId { get; set; }
     }
 }
