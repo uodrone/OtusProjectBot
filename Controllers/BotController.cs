@@ -6,6 +6,7 @@ using Telegram.Bot;
 using Telegram.Bot.Types.ReplyMarkups;
 using Telegram.Bot.Types;
 using HRProBot.Models;
+using Microsoft.Extensions.Logging;
 
 namespace HRProBot.Controllers
 {
@@ -14,11 +15,13 @@ namespace HRProBot.Controllers
         private readonly ILogger<HomeController> _logger;
         private string _TlgBotToken;
         private static string[] _Administrators;
+        private static GoogleSheetsController _GoogleSheets;
         public BotController(IOptionsSnapshot<AppSettings> appSettings)
         {
 
             _TlgBotToken = appSettings.Value.TlgBotToken;
             _Administrators = appSettings.Value.TlgBotAdministrators.Split(';');
+            _GoogleSheets = new GoogleSheetsController(appSettings);
 
             var initBot = new TelegramBotClient(_TlgBotToken);
             var cts = new CancellationTokenSource(); // прерыватель соединения с ботом
@@ -69,7 +72,7 @@ namespace HRProBot.Controllers
 
                     switch (update.Message.Text)
                     {
-                        case "/start":
+                        case "/start":                            
                             StartMessage(botClient, UserParams, update);
                             break;
                         case "Подписаться на курс":
@@ -115,7 +118,7 @@ namespace HRProBot.Controllers
 
         static void StartMessage(ITelegramBotClient botClient, User? UserParams, Update update)
         {
-            string StartMessage = "Привет, я бот HR Pro. С моей момощью Вы можете:\r\n•\tУзнать больше о системе HR Pro\r\n•\tУзнать больше об экспертах\r\n•\tЗадать вопрос эксперту\r\n•\tПодписаться на курсы обучения HR Pro\r\n";
+            string StartMessage = _GoogleSheets.GetData("Лист1!A1:A1");
             var Buttons = new ReplyKeyboardMarkup(
                             new[]
                             {
