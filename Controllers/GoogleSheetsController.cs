@@ -20,13 +20,12 @@ namespace HRProBot.Controllers
             // ID Google таблицы (это часть URL таблицы)
             _spreadsheetId = appSettings.Value.GoogleSheetsTableId;
 
-            // Укажите путь к вашему JSON-файлу с учетными данными
-            string credentialPath = "credentials.json";
+            // Путь к JSON-файлу с учетными данными
+            string СredentialPath = "credentials.json";
 
-            using (var stream = new System.IO.FileStream(credentialPath, System.IO.FileMode.Open, System.IO.FileAccess.Read))
+            using (var stream = new System.IO.FileStream(СredentialPath, System.IO.FileMode.Open, System.IO.FileAccess.Read))
             {
-                _credential = GoogleCredential.FromStream(stream)
-                    .CreateScoped(SheetsService.Scope.SpreadsheetsReadonly);
+                _credential = GoogleCredential.FromStream(stream).CreateScoped(SheetsService.Scope.SpreadsheetsReadonly);
             }
         }
 
@@ -39,8 +38,7 @@ namespace HRProBot.Controllers
             });
 
             // Запрос данных из таблицы
-            SpreadsheetsResource.ValuesResource.GetRequest request =
-                service.Spreadsheets.Values.Get(_spreadsheetId, range);
+            SpreadsheetsResource.ValuesResource.GetRequest request = service.Spreadsheets.Values.Get(_spreadsheetId, range);
 
             ValueRange response = request.Execute();
             IList<IList<object>> values = response.Values;
