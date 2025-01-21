@@ -21,7 +21,7 @@ namespace HRProBot.Controllers
             _spreadsheetId = appSettings.Value.GoogleSheetsTableId;
 
             // Укажите путь к вашему JSON-файлу с учетными данными
-            string credentialPath = "/credentials.json";
+            string credentialPath = "credentials.json";
 
             using (var stream = new System.IO.FileStream(credentialPath, System.IO.FileMode.Open, System.IO.FileAccess.Read))
             {
@@ -50,8 +50,7 @@ namespace HRProBot.Controllers
             {
                 foreach (var row in values)
                 {
-                    stringBuilder.Append(row.ToString());
-                    Console.WriteLine(string.Join(", ", row));
+                    stringBuilder.Append(string.Join(", ", row));
                 }
             }
 

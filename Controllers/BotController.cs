@@ -118,7 +118,8 @@ namespace HRProBot.Controllers
 
         static void StartMessage(ITelegramBotClient botClient, User? UserParams, Update update)
         {
-            string StartMessage = _GoogleSheets.GetData("Лист1!A1:A1");
+            string StartMessage = _GoogleSheets.GetData("Sheet1!A1:A1");            
+            //string StartMessage = "Привет, я бот HR Pro";
             var Buttons = new ReplyKeyboardMarkup(
                             new[]
                             {

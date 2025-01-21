@@ -2,8 +2,8 @@
 {
     public class AppSettings
     {
-        public string TlgBotToken { get; }
-        public string TlgBotAdministrators { get; }
-        public string GoogleSheetsTableId { get; }
+        public string TlgBotToken { get; set; }
+        public string TlgBotAdministrators { get; set; }
+        public string GoogleSheetsTableId { get; set; }
     }
 }
