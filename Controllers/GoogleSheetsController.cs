@@ -5,8 +5,6 @@ using Google.Apis.Sheets.v4;
 using HRProBot.Models;
 using Microsoft.Extensions.Options;
 using System.Text;
-using System.Net;
-using System;
 
 namespace HRProBot.Controllers
 {
@@ -14,16 +12,16 @@ namespace HRProBot.Controllers
     {
         static string _spreadsheetId;
         static GoogleCredential _credential;
-        private readonly ILogger<HomeController> _logger;
 
         public GoogleSheetsController(IOptionsSnapshot<AppSettings> appSettings) {
             // ID Google таблицы (это часть URL таблицы)
             _spreadsheetId = appSettings.Value.GoogleSheetsTableId;
 
             // Путь к JSON-файлу с учетными данными
-            string СredentialPath = "credentials.json";
+            //string СredentialPath = "dronesaurum_credentials.json";
+            string СredentialPath = "directum_credentials.json";
 
-            using (var stream = new System.IO.FileStream(СredentialPath, System.IO.FileMode.Open, System.IO.FileAccess.Read))
+            using (var stream = new FileStream(СredentialPath, FileMode.Open, FileAccess.Read))
             {
                 _credential = GoogleCredential.FromStream(stream).CreateScoped(SheetsService.Scope.SpreadsheetsReadonly);
             }

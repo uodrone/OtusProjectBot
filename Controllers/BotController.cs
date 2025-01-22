@@ -7,26 +7,27 @@ using Telegram.Bot.Types.ReplyMarkups;
 using Telegram.Bot.Types;
 using HRProBot.Models;
 using Microsoft.Extensions.Logging;
+using System.Threading;
 
 namespace HRProBot.Controllers
 {
     public class BotController
     {
         private readonly ILogger<HomeController> _logger;
-        private string _TlgBotToken;
-        private static string[] _Administrators;
-        private static GoogleSheetsController _GoogleSheets;
+        private string _tlgBotToken;
+        private static string[] _administrators;
+        private static GoogleSheetsController _googleSheets;
+        private static ITelegramBotClient _botClient;
         public BotController(IOptionsSnapshot<AppSettings> appSettings)
         {
 
-            _TlgBotToken = appSettings.Value.TlgBotToken;
-            _Administrators = appSettings.Value.TlgBotAdministrators.Split(';');
-            _GoogleSheets = new GoogleSheetsController(appSettings);
-
-            var initBot = new TelegramBotClient(_TlgBotToken);
+            _tlgBotToken = appSettings.Value.TlgBotToken;
+            _administrators = appSettings.Value.TlgBotAdministrators.Split(';');
+            _googleSheets = new GoogleSheetsController(appSettings);
+            _botClient = new TelegramBotClient(_tlgBotToken);
             var cts = new CancellationTokenSource(); // прерыватель соединения с ботом
 
-            initBot.StartReceiving(UpdateReceived,
+            _botClient.StartReceiving(UpdateReceived,
             ErrorHandler,
             new ReceiverOptions()
             {
@@ -65,32 +66,28 @@ namespace HRProBot.Controllers
                 return;
             }
 
-            if (update.Type == UpdateType.Message)
+            if (update.Type == UpdateType.Message && update.Message.Type == MessageType.Text)
             {
-                if (update.Message.Type == MessageType.Text)
+                switch (update.Message.Text)
                 {
-
-                    switch (update.Message.Text)
-                    {
-                        case "/start":                            
-                            StartMessage(botClient, UserParams, update);
-                            break;
-                        case "Подписаться на курс":
-                            botClient.SendTextMessageAsync(ChatId, $"Вы подписаны на курс");
-                            break;
-                        case "Узнать об экспертах":
-                            botClient.SendTextMessageAsync(ChatId, $"Ознакомьтесь с нашими экспертами");
-                            break;
-                        case "О системе HR Pro":
-                            botClient.SendTextMessageAsync(ChatId, $"Вот больше информации о продукте HR Pro");
-                            break;
-                        case "Задать вопрос эксперту":
-                            botClient.SendTextMessageAsync(ChatId, $"Наш эксперт ответит на ваш вопрос в течение 3 рабочих дней. Чтобы сформировать обращение мы должны знать ваши данные.");
-                            break;
-                        default:
-                            botClient.SendTextMessageAsync(ChatId, $"Попробуйте еще раз! Ник: {UserParams.Username}, Имя: {UserParams.FirstName}, id: {UserParams.Id} ");
-                            break;
-                    }
+                    case "/start":
+                        await StartMessage(botClient, UserParams, ChatId, token);
+                        break;
+                    case "Подписаться на курс":
+                        await SubcribeToTrainingCource(ChatId, token);
+                        break;
+                    case "Узнать об экспертах":
+                        botClient.SendTextMessageAsync(ChatId, $"Ознакомьтесь с нашими экспертами");
+                        break;
+                    case "О системе HR Pro":
+                        botClient.SendTextMessageAsync(ChatId, $"Вот больше информации о продукте HR Pro");
+                        break;
+                    case "Задать вопрос эксперту":
+                        botClient.SendTextMessageAsync(ChatId, $"Наш эксперт ответит на ваш вопрос в течение 3 рабочих дней. Чтобы сформировать обращение мы должны знать ваши данные.");
+                        break;
+                    default:
+                        botClient.SendTextMessageAsync(ChatId, $"Попробуйте еще раз! Ник: {UserParams.Username}, Имя: {UserParams.FirstName}, id: {UserParams.Id} ");
+                        break;
                 }
             }
         }
@@ -105,7 +102,7 @@ namespace HRProBot.Controllers
             User? UserParams = userParams;
             bool IsUserAdmin = false;
 
-            foreach (string admin in _Administrators)
+            foreach (string admin in _administrators)
             {
                 if (admin == userParams.Id.ToString())
                 {
@@ -116,10 +113,10 @@ namespace HRProBot.Controllers
             return IsUserAdmin;
         }
 
-        static void StartMessage(ITelegramBotClient botClient, User? UserParams, Update update)
+        static async Task StartMessage(ITelegramBotClient botClient, User? UserParams, long ChatId, CancellationToken token)
         {
-            string StartMessage = _GoogleSheets.GetData("Sheet1!A1:A1");            
-            //string StartMessage = "Привет, я бот HR Pro";
+            //string StartMessage = _googleSheets.GetData("Sheet1!A1:A1");
+            string StartMessage = _googleSheets.GetData("Лист1!A1:A1");
             var Buttons = new ReplyKeyboardMarkup(
                             new[]
                             {
@@ -136,9 +133,18 @@ namespace HRProBot.Controllers
 
             if (IsBotAdministrator(UserParams))
             {
-                botClient.SendTextMessageAsync(update.Message.Chat.Id, "Пользователь является администратором и ему доступны особые команды");
+                await botClient.SendTextMessageAsync(ChatId, "Пользователь является администратором и ему доступны особые команды");
             }
-            botClient.SendTextMessageAsync(update.Message.Chat.Id, StartMessage, replyMarkup: Buttons);            
+            await botClient.SendTextMessageAsync(ChatId, StartMessage, replyMarkup: Buttons);            
+        }
+
+        static async Task SubcribeToTrainingCource(long chatId, CancellationToken cancellationToken)
+        {
+            await _botClient.SendTextMessageAsync(
+            chatId: chatId,
+            text: "Вы выбрали подписку на курс. Введите ваш email:",
+            cancellationToken: cancellationToken);
+
         }
 
         static void GetUserData(ITelegramBotClient botClient, Update update, BotUser BotUser)
