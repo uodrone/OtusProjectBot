@@ -63,63 +63,96 @@ namespace HRProBot.Controllers
             string? BotName = Me.FirstName; //имя бота            
             long ChatId = update.Message.Chat.Id;
             var BotUser = new BotUser();
+            string Message;
+            ReplyKeyboardMarkup? Buttons;
 
             if (update.Type == UpdateType.Message && update.Message.Type == MessageType.Text && UserParams != null)
             {
                 switch (update.Message.Text)
                 {
+                    case "🚩 К началу":
                     case "/start":
-                        string Message = _botMessagesData[1][3].ToString();
-                        var Buttons = new ReplyKeyboardMarkup(
-                                        new[]
-                                        {
-                                            new[] {
-                                                new KeyboardButton("Подписаться на курс"),
-                                                new KeyboardButton("Узнать об экспертах")
-                                            },
-                                            new[] {
-                                                new KeyboardButton("О системе HR Pro"),
-                                                new KeyboardButton("Задать вопрос эксперту")
-                                            }
-                                        });
-                        if (IsBotAdministrator(UserParams))
-                        {
-                            Buttons = new ReplyKeyboardMarkup(
-                                        new[]
-                                        {
-                                            new[] {
-                                                new KeyboardButton("Подписаться на курс"),
-                                                new KeyboardButton("Узнать об экспертах")
-                                            },
-                                            new[] {
-                                                new KeyboardButton("О системе HR Pro"),
-                                                new KeyboardButton("Задать вопрос эксперту")
-                                            },
-                                            new[] {
-                                                new KeyboardButton("Массовая рассылка"),
-                                                new KeyboardButton("Выгрузить отчет"),
-                                                new KeyboardButton("Ответить пользователю")
-                                            }
-                                        });
-                        }
+                        Message = _botMessagesData[1][3].ToString();
+                        Buttons = new ReplyKeyboardMarkup(
+                                    new[]
+                                    {
+                                        new[] {
+                                            new KeyboardButton("📅 Подписаться на курс"),
+                                            new KeyboardButton("🤵‍♂️ Узнать об экспертах")
+                                        },
+                                        new[] {
+                                            new KeyboardButton("🔍 О системе HR Pro"),
+                                            new KeyboardButton("🙋‍♂️ Задать вопрос эксперту")
+                                        }
+                                    });                       
                         Buttons.ResizeKeyboard = true;
 
                         SendMessage(ChatId, token, Message, Buttons);
 
                         break;
-                    case "Подписаться на курс":
-                        SendMessage(ChatId, token, "Вы подписались на курс", null);
+                    case "📅 Подписаться на курс":
+                    case "/course":
+                        Message = _botMessagesData[2][3].ToString();
+                        Buttons = new ReplyKeyboardMarkup(
+                                    new[] {
+                                            new KeyboardButton("🚩 К началу")
+                                        });
+                        Buttons.ResizeKeyboard = true;
                         DateTime date = DateTime.Now;
-                        SubcribeToTrainingCource(date);
+                        if (SubcribeToTrainingCource(date))
+                        {
+                            SendMessage(ChatId, token, Message, Buttons);
+                        }                        
                         break;
-                    case "Узнать об экспертах":
-                        botClient.SendTextMessageAsync(ChatId, $"Ознакомьтесь с нашими экспертами");
+                    case "🤵‍♂️ Узнать об экспертах":
+                    case "/experts":
+                        Message = _botMessagesData[3][3].ToString();
+                        Buttons = new ReplyKeyboardMarkup(
+                                    new[] {
+                                            new KeyboardButton("🚩 К началу"),
+                                            new KeyboardButton("🙋‍♂️ Задать вопрос эксперту")
+                                        });
+                        Buttons.ResizeKeyboard = true;
+                        SendMessage(ChatId, token, Message, Buttons);
                         break;
-                    case "О системе HR Pro":
-                        botClient.SendTextMessageAsync(ChatId, $"Вот больше информации о продукте HR Pro");
+                    case "🔍 О системе HR Pro":
+                    case "/hrpro":
+                        Message = _botMessagesData[4][3].ToString();
+                        Buttons = new ReplyKeyboardMarkup(
+                                    new[] {
+                                            new KeyboardButton("🚩 К началу")
+                                        });
+                        Buttons.ResizeKeyboard = true;
+                        string imageUrl = "https://www.directum.ru/application/images/hr-pro_logo_vertical.png";
+                        SendMessagePhoto(ChatId, token, imageUrl, Message, Buttons);
                         break;
-                    case "Задать вопрос эксперту":
+                    case "🙋‍♂️ Задать вопрос эксперту":
+                    case "/ask":
                         botClient.SendTextMessageAsync(ChatId, $"Наш эксперт ответит на ваш вопрос в течение 3 рабочих дней. Чтобы сформировать обращение мы должны знать ваши данные.");
+                        break;
+                    case "/mailing":
+                        if (IsBotAdministrator(UserParams))
+                        {
+                            SendMessage(ChatId, token, "Массовая рассылка началась", null);
+                        }
+                        break;
+                    case "/testmailing":
+                        if (IsBotAdministrator(UserParams))
+                        {
+                            SendMessage(ChatId, token, "Отправляю тестовую рассылку", null);
+                        }
+                        break;
+                    case "/report":
+                        if (IsBotAdministrator(UserParams))
+                        {
+                            SendMessage(ChatId, token, "Формирую отчет в Excel", null);
+                        }
+                        break;
+                    case "/answer":
+                        if (IsBotAdministrator(UserParams))
+                        {
+                            SendMessage(ChatId, token, "Введите id пользователя, которому вы хотите ответить", null);
+                        }
                         break;
                     default:
                         botClient.SendTextMessageAsync(ChatId, $"Попробуйте еще раз! Ник: {UserParams.Username}, Имя: {UserParams.FirstName}, id: {UserParams.Id} ");
@@ -159,9 +192,27 @@ namespace HRProBot.Controllers
             cancellationToken: cancellationToken);
         }
 
-        static void SubcribeToTrainingCource(DateTime date)
+        static async Task SendMessagePhoto(long chatId, CancellationToken cancellationToken, string imageUrl, string textMessage, ReplyKeyboardMarkup? buttons)
         {
-            
+            await _botClient.SendPhotoAsync(
+            chatId: chatId,
+            imageUrl,
+            caption: textMessage,
+            replyMarkup: buttons,
+            cancellationToken: cancellationToken);
+        }
+
+        static async Task SendMessagePhotosGroup(long chatId, CancellationToken cancellationToken, List<InputMediaPhoto> images)
+        {
+            await _botClient.SendMediaGroupAsync(
+            chatId: chatId,
+            images,
+            cancellationToken: cancellationToken);
+        }
+
+        static bool SubcribeToTrainingCource(DateTime date)
+        {
+            return true;
         }
 
         static void GetUserData(ITelegramBotClient botClient, Update update, BotUser BotUser)
