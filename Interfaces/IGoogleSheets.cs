@@ -7,6 +7,6 @@ namespace HRProBot.Interfaces
         static string _spreadsheetId;
         static GoogleCredential _credential;
 
-        string GetData(string range);
+        IList<IList<object>> GetData(string range);
     }
 }

@@ -28,7 +28,7 @@ namespace HRProBot.Controllers
             }
         }
 
-        public string GetData(string range) {
+        public IList<IList<object>> GetData(string range) {
             // Создаем сервис для работы с Google Sheets API
             var service = new SheetsService(new BaseClientService.Initializer()
             {
@@ -40,18 +40,10 @@ namespace HRProBot.Controllers
             SpreadsheetsResource.ValuesResource.GetRequest request = service.Spreadsheets.Values.Get(_spreadsheetId, range);
 
             ValueRange response = request.Execute();
-            IList<IList<object>> values = response.Values;
-            StringBuilder stringBuilder = new StringBuilder();
+            IList<IList<object>> ResponseValues = response.Values;
 
-            if (values != null && values.Count > 0)
-            {
-                foreach (var row in values)
-                {
-                    stringBuilder.Append(string.Join(", ", row));
-                }
-            }
 
-            return stringBuilder.ToString();
+            return ResponseValues;
         }
     }
 }

@@ -19,6 +19,7 @@ namespace HRProBot.Controllers
         private static string[] _administrators;
         private static GoogleSheetsController _googleSheets;
         private static ITelegramBotClient _botClient;
+        private static IList<IList<object>> _botMessagesData;
         public BotController(IOptionsSnapshot<AppSettings> appSettings)
         {
 
@@ -26,6 +27,8 @@ namespace HRProBot.Controllers
             _administrators = appSettings.Value.TlgBotAdministrators.Split(';');
             _googleSheets = new GoogleSheetsController(appSettings);
             _botClient = new TelegramBotClient(_tlgBotToken);
+            var range = appSettings.Value.GoogleSheetsRange;
+            _botMessagesData = _googleSheets.GetData(range);
             var cts = new CancellationTokenSource(); // прерыватель соединения с ботом
 
             _botClient.StartReceiving(UpdateHandler,
@@ -61,21 +64,53 @@ namespace HRProBot.Controllers
             long ChatId = update.Message.Chat.Id;
             var BotUser = new BotUser();
 
-            if (UserParams is null)
-            {
-                Console.WriteLine("Message is null");
-                return;
-            }
-
-            if (update.Type == UpdateType.Message && update.Message.Type == MessageType.Text)
+            if (update.Type == UpdateType.Message && update.Message.Type == MessageType.Text && UserParams != null)
             {
                 switch (update.Message.Text)
                 {
                     case "/start":
-                        await StartMessage(botClient, token, ChatId, UserParams);
+                        string Message = _botMessagesData[1][3].ToString();
+                        var Buttons = new ReplyKeyboardMarkup(
+                                        new[]
+                                        {
+                                            new[] {
+                                                new KeyboardButton("Подписаться на курс"),
+                                                new KeyboardButton("Узнать об экспертах")
+                                            },
+                                            new[] {
+                                                new KeyboardButton("О системе HR Pro"),
+                                                new KeyboardButton("Задать вопрос эксперту")
+                                            }
+                                        });
+                        if (IsBotAdministrator(UserParams))
+                        {
+                            Buttons = new ReplyKeyboardMarkup(
+                                        new[]
+                                        {
+                                            new[] {
+                                                new KeyboardButton("Подписаться на курс"),
+                                                new KeyboardButton("Узнать об экспертах")
+                                            },
+                                            new[] {
+                                                new KeyboardButton("О системе HR Pro"),
+                                                new KeyboardButton("Задать вопрос эксперту")
+                                            },
+                                            new[] {
+                                                new KeyboardButton("Массовая рассылка"),
+                                                new KeyboardButton("Выгрузить отчет"),
+                                                new KeyboardButton("Ответить пользователю")
+                                            }
+                                        });
+                        }
+                        Buttons.ResizeKeyboard = true;
+
+                        SendMessage(ChatId, token, Message, Buttons);
+
                         break;
                     case "Подписаться на курс":
-                        await SubcribeToTrainingCource(ChatId, token);
+                        SendMessage(ChatId, token, "Вы подписались на курс", null);
+                        DateTime date = DateTime.Now;
+                        SubcribeToTrainingCource(date);
                         break;
                     case "Узнать об экспертах":
                         botClient.SendTextMessageAsync(ChatId, $"Ознакомьтесь с нашими экспертами");
@@ -114,38 +149,19 @@ namespace HRProBot.Controllers
             return IsUserAdmin;
         }
 
-        static async Task StartMessage(ITelegramBotClient botClient, CancellationToken token, long ChatId, User? UserParams)
-        {
-            //string StartMessage = _googleSheets.GetData("Sheet1!A1:A1");
-            string StartMessage = _googleSheets.GetData("Лист1!A1:C2");
-            var Buttons = new ReplyKeyboardMarkup(
-                            new[]
-                            {
-                                new[] {
-                                    new KeyboardButton("Подписаться на курс"),
-                                    new KeyboardButton("Узнать об экспертах")
-                                },
-                                new[] {
-                                    new KeyboardButton("О системе HR Pro"),
-                                    new KeyboardButton("Задать вопрос эксперту")
-                                }
-                            });
-            Buttons.ResizeKeyboard = true;
 
-            if (IsBotAdministrator(UserParams))
-            {
-                await botClient.SendTextMessageAsync(ChatId, "Пользователь является администратором и ему доступны особые команды");
-            }
-            await botClient.SendTextMessageAsync(ChatId, StartMessage, replyMarkup: Buttons);
-        }
-
-        static async Task SubcribeToTrainingCource(long chatId, CancellationToken cancellationToken)
+        static async Task SendMessage(long chatId, CancellationToken cancellationToken, string textMessage, ReplyKeyboardMarkup? buttons)
         {
             await _botClient.SendTextMessageAsync(
             chatId: chatId,
-            text: "Вы выбрали подписку на курс. Введите ваш email:",
+            text: textMessage,
+            replyMarkup: buttons,
             cancellationToken: cancellationToken);
+        }
 
+        static void SubcribeToTrainingCource(DateTime date)
+        {
+            
         }
 
         static void GetUserData(ITelegramBotClient botClient, Update update, BotUser BotUser)
