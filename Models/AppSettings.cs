@@ -6,5 +6,6 @@
         public string TlgBotAdministrators { get; set; }
         public string GoogleSheetsTableId { get; set; }
         public string GoogleSheetsRange { get; set; }
+        public string GoogleCredentialsFile { get; set; }
     }
 }

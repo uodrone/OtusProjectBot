@@ -18,9 +18,8 @@ namespace HRProBot.Controllers
             // ID Google таблицы (это часть URL таблицы)
             _spreadsheetId = appSettings.Value.GoogleSheetsTableId;
 
-            // Путь к JSON-файлу с учетными данными
-            //string СredentialPath = "dronesaurum_credentials.json";
-            string СredentialPath = "directum_credentials.json";
+            // Путь к JSON-файлу с учетными данными таблиц
+            string СredentialPath = appSettings.Value.GoogleCredentialsFile;
 
             using (var stream = new FileStream(СredentialPath, FileMode.Open, FileAccess.Read))
             {
