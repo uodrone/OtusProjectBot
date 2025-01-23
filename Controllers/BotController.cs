@@ -8,13 +8,14 @@ using Telegram.Bot.Types;
 using HRProBot.Models;
 using Microsoft.Extensions.Logging;
 using System.Threading;
+using HRProBot.Interfaces;
 
 namespace HRProBot.Controllers
 {
     public class BotController
     {
         private readonly ILogger<HomeController> _logger;
-        private string _tlgBotToken;
+        private static string _tlgBotToken;
         private static string[] _administrators;
         private static GoogleSheetsController _googleSheets;
         private static ITelegramBotClient _botClient;
@@ -27,7 +28,7 @@ namespace HRProBot.Controllers
             _botClient = new TelegramBotClient(_tlgBotToken);
             var cts = new CancellationTokenSource(); // прерыватель соединения с ботом
 
-            _botClient.StartReceiving(UpdateReceived,
+            _botClient.StartReceiving(UpdateHandler,
             ErrorHandler,
             new ReceiverOptions()
             {
@@ -52,7 +53,7 @@ namespace HRProBot.Controllers
         /// <param name="update"></param>
         /// <param name="token"></param>
         /// <returns></returns>
-        private static async Task UpdateReceived(ITelegramBotClient botClient, Update update, CancellationToken token)
+        private static async Task UpdateHandler(ITelegramBotClient botClient, Update update, CancellationToken token)
         {
             var Me = await botClient.GetMe();
             var UserParams = update.Message?.From;
@@ -71,7 +72,7 @@ namespace HRProBot.Controllers
                 switch (update.Message.Text)
                 {
                     case "/start":
-                        await StartMessage(botClient, UserParams, ChatId, token);
+                        await StartMessage(botClient, token, ChatId, UserParams);
                         break;
                     case "Подписаться на курс":
                         await SubcribeToTrainingCource(ChatId, token);
@@ -113,16 +114,16 @@ namespace HRProBot.Controllers
             return IsUserAdmin;
         }
 
-        static async Task StartMessage(ITelegramBotClient botClient, User? UserParams, long ChatId, CancellationToken token)
+        static async Task StartMessage(ITelegramBotClient botClient, CancellationToken token, long ChatId, User? UserParams)
         {
             //string StartMessage = _googleSheets.GetData("Sheet1!A1:A1");
-            string StartMessage = _googleSheets.GetData("Лист1!A1:A1");
+            string StartMessage = _googleSheets.GetData("Лист1!A1:C2");
             var Buttons = new ReplyKeyboardMarkup(
                             new[]
                             {
                                 new[] {
                                     new KeyboardButton("Подписаться на курс"),
-                                    new KeyboardButton("Узнать об экспертах")                                    
+                                    new KeyboardButton("Узнать об экспертах")
                                 },
                                 new[] {
                                     new KeyboardButton("О системе HR Pro"),
@@ -135,7 +136,7 @@ namespace HRProBot.Controllers
             {
                 await botClient.SendTextMessageAsync(ChatId, "Пользователь является администратором и ему доступны особые команды");
             }
-            await botClient.SendTextMessageAsync(ChatId, StartMessage, replyMarkup: Buttons);            
+            await botClient.SendTextMessageAsync(ChatId, StartMessage, replyMarkup: Buttons);
         }
 
         static async Task SubcribeToTrainingCource(long chatId, CancellationToken cancellationToken)
@@ -153,5 +154,6 @@ namespace HRProBot.Controllers
             botClient.SendTextMessageAsync(ChatId, "Введите ваше имя");
             BotUser.Name = update.Message.Text;
         }
+        
     }
 }

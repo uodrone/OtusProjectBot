@@ -5,10 +5,11 @@ using Google.Apis.Sheets.v4;
 using HRProBot.Models;
 using Microsoft.Extensions.Options;
 using System.Text;
+using HRProBot.Interfaces;
 
 namespace HRProBot.Controllers
 {
-    public class GoogleSheetsController
+    public class GoogleSheetsController : IGoogleSheets
     {
         static string _spreadsheetId;
         static GoogleCredential _credential;
