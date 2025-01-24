@@ -9,6 +9,7 @@ using HRProBot.Models;
 using Microsoft.Extensions.Logging;
 using System.Threading;
 using HRProBot.Interfaces;
+using System.IO;
 
 namespace HRProBot.Controllers
 {
@@ -124,7 +125,7 @@ namespace HRProBot.Controllers
                                         });
                         Buttons.ResizeKeyboard = true;
                         string imageUrl = "https://www.directum.ru/application/images/hr-pro_logo_vertical.png";
-                        SendMessagePhoto(ChatId, token, imageUrl, Message, Buttons);
+                        SendMessage(ChatId, token, imageUrl, Message, Buttons);
                         break;
                     case "🙋‍♂️ Задать вопрос эксперту":
                     case "/ask":
@@ -182,7 +183,14 @@ namespace HRProBot.Controllers
             return IsUserAdmin;
         }
 
-
+        /// <summary>
+        /// Отправка текста
+        /// </summary>
+        /// <param name="chatId"></param>
+        /// <param name="cancellationToken"></param>
+        /// <param name="textMessage"></param>
+        /// <param name="buttons"></param>
+        /// <returns></returns>
         static async Task SendMessage(long chatId, CancellationToken cancellationToken, string textMessage, ReplyKeyboardMarkup? buttons)
         {
             await _botClient.SendTextMessageAsync(
@@ -191,8 +199,16 @@ namespace HRProBot.Controllers
             replyMarkup: buttons,
             cancellationToken: cancellationToken);
         }
-
-        static async Task SendMessagePhoto(long chatId, CancellationToken cancellationToken, string imageUrl, string textMessage, ReplyKeyboardMarkup? buttons)
+        /// <summary>
+        /// Отправка фотки с текстом
+        /// </summary>
+        /// <param name="chatId"></param>
+        /// <param name="cancellationToken"></param>
+        /// <param name="imageUrl"></param>
+        /// <param name="textMessage"></param>
+        /// <param name="buttons"></param>
+        /// <returns></returns>
+        static async Task SendMessage(long chatId, CancellationToken cancellationToken, string imageUrl, string textMessage, ReplyKeyboardMarkup? buttons)
         {
             await _botClient.SendPhotoAsync(
             chatId: chatId,
@@ -201,14 +217,72 @@ namespace HRProBot.Controllers
             replyMarkup: buttons,
             cancellationToken: cancellationToken);
         }
-
-        static async Task SendMessagePhotosGroup(long chatId, CancellationToken cancellationToken, List<InputMediaPhoto> images)
+        /// <summary>
+        /// Отправка видосика с текстом
+        /// </summary>
+        /// <param name="chatId"></param>
+        /// <param name="cancellationToken"></param>
+        /// <param name="imageUrl"></param>
+        /// <param name="textMessage"></param>
+        /// <param name="buttons"></param>
+        /// <returns></returns>
+        static async Task SendMessage(long chatId, CancellationToken cancellationToken, string videoUrl, bool isVideo, string textMessage, ReplyKeyboardMarkup? buttons)
+        {
+            await _botClient.SendVideoAsync(
+            chatId: chatId,
+            videoUrl,
+            caption: textMessage,
+            replyMarkup: buttons,
+            cancellationToken: cancellationToken);
+        }
+        /// <summary>
+        /// Отправка галереи фоток
+        /// </summary>
+        /// <param name="chatId"></param>
+        /// <param name="cancellationToken"></param>
+        /// <param name="images"></param>
+        /// <returns></returns>
+        static async Task SendMessage(long chatId, CancellationToken cancellationToken, List<InputMediaPhoto> images)
         {
             await _botClient.SendMediaGroupAsync(
             chatId: chatId,
             images,
             cancellationToken: cancellationToken);
         }
+        /// <summary>
+        /// Отправка галереи видосиков
+        /// </summary>
+        /// <param name="chatId"></param>
+        /// <param name="cancellationToken"></param>
+        /// <param name="video"></param>
+        /// <returns></returns>
+        static async Task SendMessage(long chatId, CancellationToken cancellationToken, List<InputMediaVideo> video)
+        {
+            await _botClient.SendMediaGroupAsync(
+            chatId: chatId,
+            video,
+            cancellationToken: cancellationToken);
+        }
+        /// <summary>
+        /// Отправка видео кружочком
+        /// </summary>
+        /// <returns></returns>
+        static async Task SendVideoNote(long chatId, CancellationToken cancellationToken, string videoUrl)
+        {
+            int lastSlashIndex = videoUrl.LastIndexOf('/'); // Находим индекс последнего слэша
+            if (lastSlashIndex != -1)
+            {
+                string fileName = videoUrl.Substring(lastSlashIndex + 1); // Выделяем всё после последнего слэша
+                using (var fileStream = System.IO.File.OpenRead(videoUrl))
+                {
+                    await _botClient.SendVideoNoteAsync(
+                        chatId,
+                        new InputFileStream(fileStream, fileName),
+                        cancellationToken: cancellationToken);
+                }
+            }            
+        }
+        
 
         static bool SubcribeToTrainingCource(DateTime date)
         {
