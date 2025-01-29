@@ -215,11 +215,24 @@ namespace HRProBot.Controllers
         /// <returns></returns>
         static async Task SendMessage(long chatId, CancellationToken cancellationToken, string textMessage, ReplyKeyboardMarkup? buttons)
         {
-            await _botClient.SendTextMessageAsync(
-            chatId: chatId,
-            text: textMessage,
-            replyMarkup: buttons,
-            cancellationToken: cancellationToken);
+            ReplyKeyboardRemove removeKeyboard = new ReplyKeyboardRemove();
+
+            if (buttons == null)
+            {
+                await _botClient.SendTextMessageAsync(
+                chatId: chatId,
+                text: textMessage,
+                replyMarkup: removeKeyboard,
+                cancellationToken: cancellationToken);
+            } 
+            else
+            {
+                await _botClient.SendTextMessageAsync(
+                chatId: chatId,
+                text: textMessage,
+                replyMarkup: buttons,
+                cancellationToken: cancellationToken);
+            }
         }
         /// <summary>
         /// Отправка фотки с текстом
@@ -338,8 +351,13 @@ namespace HRProBot.Controllers
                     break;
                 case 4:
                     botUser.Phone = update.Message.Text;
+                    var Buttons = new ReplyKeyboardMarkup(
+                                   new[] {
+                                        new KeyboardButton("🚩 К началу")
+                                   });
+                    Buttons.ResizeKeyboard = true;
                     await SendMessage(ChatId, cancellationToken, "Спасибо, ваши данные сохранены", null);
-                    await SendMessage(ChatId, cancellationToken, $"Имя: {botUser.FirstName}\nФамилия: {botUser.LastName}\nОрганизация: {botUser.Organization}\nТелефон: {botUser.Phone}", null);
+                    await SendMessage(ChatId, cancellationToken, $"Имя: {botUser.FirstName}\nФамилия: {botUser.LastName}\nОрганизация: {botUser.Organization}\nТелефон: {botUser.Phone}", Buttons);
                     botUser.DataCollectStep = 0; // Сброс состояния для нового диалога
                     break;
             }
