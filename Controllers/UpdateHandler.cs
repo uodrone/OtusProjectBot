@@ -64,7 +64,7 @@ namespace HRProBot.Controllers
                             break;
                         case "📅 Подписаться на курс":
                         case "/course":
-                            await HandleCourseCommand(ChatId, cancellationToken);
+                            await HandleCourseCommand(ChatId, cancellationToken, User);
                             break;
                         case "🤵‍♂️ Узнать об экспертах":
                         case "/experts":
@@ -158,7 +158,7 @@ namespace HRProBot.Controllers
         /// <param name="chatId"></param>
         /// <param name="cancellationToken"></param>
         /// <returns></returns>
-        private static async Task HandleCourseCommand(long chatId, CancellationToken cancellationToken)
+        private static async Task HandleCourseCommand(long chatId, CancellationToken cancellationToken, BotUser user)
         {
             string Message = _botMessagesData[2][3].ToString();
             var Buttons = new ReplyKeyboardMarkup(
@@ -167,9 +167,12 @@ namespace HRProBot.Controllers
                 });
             Buttons.ResizeKeyboard = true;
             DateTime date = DateTime.Now;
-            if (SubcribeToTrainingCource(date))
+            if (!user.IsSubscribed)
             {
+                user.IsSubscribed = true;                
                 await SendMessage(chatId, cancellationToken, Message, Buttons);
+                var Course = new CourseController(user, date);
+                Course.SendTrainingCourceMessage();
             }
         }
         /// <summary>
@@ -318,11 +321,6 @@ namespace HRProBot.Controllers
                         cancellationToken: cancellationToken);
                 }
             }
-        }
-
-        static bool SubcribeToTrainingCource(DateTime date)
-        {
-            return true;
         }
 
         private static async Task GetUserData(Update update, CancellationToken cancellationToken, BotUser botUser)

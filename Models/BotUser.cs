@@ -11,5 +11,6 @@
         public string? Question { get; set; }
         public bool IsSubscribed { get; set; }
         public int DataCollectStep {  get; set; }
+        public int CurrentCourseStep { get; set; }
     }
 }
