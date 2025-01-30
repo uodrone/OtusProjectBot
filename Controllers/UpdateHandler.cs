@@ -38,6 +38,7 @@ namespace HRProBot.Controllers
             var UserParams = update.Message?.From;
             string? BotName = Me.FirstName; //имя бота            
             long ChatId = update.Message.Chat.Id;
+            var User = new BotUser();
 
 
             if (update.Type == UpdateType.Message && update.Message.Type == MessageType.Text && UserParams != null)
@@ -75,7 +76,8 @@ namespace HRProBot.Controllers
                             break;
                         case "🙋‍♂️ Задать вопрос эксперту":
                         case "/ask":
-                            _userStates[ChatId] = new BotUser { DataCollectStep = 0 };
+                            User.DataCollectStep = 0;
+                            _userStates[ChatId] = User;
                             await GetUserData(update, cancellationToken, _userStates[ChatId]);
                             break;
                         case "/mailing":
@@ -326,6 +328,7 @@ namespace HRProBot.Controllers
         private static async Task GetUserData(Update update, CancellationToken cancellationToken, BotUser botUser)
         {
             long ChatId = update.Message.Chat.Id;
+            var regular = new RegularValidation();
 
             switch (botUser.DataCollectStep)
             {
@@ -335,30 +338,62 @@ namespace HRProBot.Controllers
                     botUser.DataCollectStep = 1;
                     break;
                 case 1:
-                    botUser.FirstName = update.Message.Text;
-                    await SendMessage(ChatId, cancellationToken, "Пожалуйста, введите вашу фамилию:", null);
-                    botUser.DataCollectStep = 2;
+                    if (regular.ValidateName(update.Message.Text))
+                    {
+                        botUser.FirstName = update.Message.Text;
+                        await SendMessage(ChatId, cancellationToken, "Пожалуйста, введите вашу фамилию:", null);
+                        botUser.DataCollectStep = 2;
+                    }
+                    else
+                    {
+                        await SendMessage(ChatId, cancellationToken, "Имя неверное, введите правильное имя", null);
+                    } 
                     break;
                 case 2:
-                    botUser.LastName = update.Message.Text;
-                    await SendMessage(ChatId, cancellationToken, "Пожалуйста, введите вашу организацию:", null);
-                    botUser.DataCollectStep = 3;
+                    if (regular.ValidateName(update.Message.Text))
+                    {
+                        botUser.LastName = update.Message.Text;
+                        await SendMessage(ChatId, cancellationToken, "Пожалуйста, введите вашу организацию:", null);
+                        botUser.DataCollectStep = 3;
+                    }
+                    else
+                    {
+                        await SendMessage(ChatId, cancellationToken, "Фамилия неверная, введите правильную фамилию", null);
+                    }                    
                     break;
                 case 3:
-                    botUser.Organization = update.Message.Text;
-                    await SendMessage(ChatId, cancellationToken, "Пожалуйста, введите ваш телефон:", null);
-                    botUser.DataCollectStep = 4;
+                    if (regular.ValidateOrganization(update.Message.Text))
+                    {
+                        botUser.Organization = update.Message.Text;
+                        await SendMessage(ChatId, cancellationToken, "Пожалуйста, введите ваш телефон:", null);
+                        botUser.DataCollectStep = 4;
+                    }
+                    else
+                    {
+                        await SendMessage(ChatId, cancellationToken, "Организация неверная, введите правильную организацию", null);
+                    }
                     break;
                 case 4:
-                    botUser.Phone = update.Message.Text;
-                    var Buttons = new ReplyKeyboardMarkup(
-                                   new[] {
+                    if (regular.ValidatePhone(update.Message.Text))
+                    {
+                        botUser.Phone = update.Message.Text;
+                        botUser.Id = update.Message.From.Id;
+                        var Buttons = new ReplyKeyboardMarkup(
+                                       new[] {
                                         new KeyboardButton("🚩 К началу")
-                                   });
-                    Buttons.ResizeKeyboard = true;
-                    await SendMessage(ChatId, cancellationToken, "Спасибо, ваши данные сохранены", null);
-                    await SendMessage(ChatId, cancellationToken, $"Имя: {botUser.FirstName}\nФамилия: {botUser.LastName}\nОрганизация: {botUser.Organization}\nТелефон: {botUser.Phone}", Buttons);
-                    botUser.DataCollectStep = 0; // Сброс состояния для нового диалога
+                                       });
+                        Buttons.ResizeKeyboard = true;
+                        await SendMessage(ChatId, cancellationToken, "Спасибо, ваши данные сохранены", null);
+                        await SendMessage(ChatId, cancellationToken,
+                            $"Имя: {botUser.FirstName}\nФамилия: {botUser.LastName}\nОрганизация: {botUser.Organization}\nТелефон: {botUser.Phone}\nId пользователя: {botUser.Id}",
+                            Buttons);
+                        botUser.DataCollectStep = 0; // Сброс состояния для нового диалога
+                    }
+                    else
+                    {
+                        await SendMessage(ChatId, cancellationToken, "Телефон неверный, введите правильный номер телефона", null);
+                    }
+                    
                     break;
             }
         }
