@@ -39,6 +39,7 @@ namespace HRProBot.Controllers
             string? BotName = Me.FirstName; //имя бота            
             long ChatId = update.Message.Chat.Id;
             var User = new BotUser();
+            User.Id = UserParams.Id;
 
 
             if (update.Type == UpdateType.Message && update.Message.Type == MessageType.Text && UserParams != null)
@@ -167,12 +168,18 @@ namespace HRProBot.Controllers
                 });
             Buttons.ResizeKeyboard = true;
             DateTime date = DateTime.Now;
+            var Course = new CourseController(user, date);
             if (!user.IsSubscribed)
             {
-                user.IsSubscribed = true;                
+
+                user.IsSubscribed = true;
+                user.DateStartSubscribe = date;
                 await SendMessage(chatId, cancellationToken, Message, Buttons);
-                var Course = new CourseController(user, date);
                 Course.SendTrainingCourceMessage();
+            } 
+            else
+            {
+                await SendMessage(chatId, cancellationToken, "Вы уже подписаны на курс. Обучающие материалы выходят каждую неделю. Следите за обновлениями", Buttons);
             }
         }
         /// <summary>
@@ -375,7 +382,6 @@ namespace HRProBot.Controllers
                     if (regular.ValidatePhone(update.Message.Text))
                     {
                         botUser.Phone = update.Message.Text;
-                        botUser.Id = update.Message.From.Id;
                         var Buttons = new ReplyKeyboardMarkup(
                                        new[] {
                                         new KeyboardButton("🚩 К началу")
