@@ -1,31 +1,34 @@
-﻿using HRProBot.Models;
-using Telegram.Bot.Types;
+﻿using System;
+using System.Threading;
+using System.Threading.Tasks;
+using HRProBot.Models;
+using Telegram.Bot;
 
 namespace HRProBot.Controllers
 {
     public class CourseController
     {
-        private static Timer timer;
         private BotUser _user;
-        private DateTime _date;
-        private static int daysInterval = 7;
-        public CourseController(BotUser user, DateTime date)
+        private ITelegramBotClient _botClient;
+        private Timer _timer;
+
+        public CourseController(BotUser user, ITelegramBotClient botClient)
         {
             _user = user;
-            _date = date;
+            _botClient = botClient;
         }
 
-        public string SendTrainingCourceMessage()
+        private async void SendTrainingCourseMessage(object state)
         {
             string CourseMessage = null;
 
-            if (_user.IsSubscribed && _user.DateStartSubscribe <= DateTime.Now) { 
+            if (_user.IsSubscribed && _user.DateStartSubscribe <= DateTime.Now)
+            {
                 switch (_user.CurrentCourseStep)
                 {
                     case 1:
                         CourseMessage = "Отправляю первый материал курса";
                         _user.CurrentCourseStep++;
-                        // Установка первого таймера для отправки первого сообщения сразу после запуска
                         break;
                     case 2:
                         CourseMessage = "Отправляю второй материал курса";
@@ -41,13 +44,27 @@ namespace HRProBot.Controllers
                         break;
                     case 5:
                         CourseMessage = "Отправляю пятый материал курса";
+                        StopSendingMaterials();
                         break;
-                }                
+                }
+
+                if (CourseMessage != null)
+                {
+                    await _botClient.SendTextMessageAsync(_user.Id, CourseMessage);
+                }
             }
+        }
 
-            
+        public void StartSendingMaterials()
+        {
+            // Запускаем таймер с интервалом 7 секунд
+            _timer = new Timer(SendTrainingCourseMessage, null, TimeSpan.Zero, TimeSpan.FromSeconds(7));
+        }
 
-            return CourseMessage;
+        public void StopSendingMaterials()
+        {
+            // Останавливаем таймер
+            _timer?.Change(Timeout.Infinite, 0);
         }
     }
 }

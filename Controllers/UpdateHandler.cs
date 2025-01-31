@@ -164,19 +164,18 @@ namespace HRProBot.Controllers
             string Message = _botMessagesData[2][3].ToString();
             var Buttons = new ReplyKeyboardMarkup(
                 new[] {
-                    new KeyboardButton("🚩 К началу")
+            new KeyboardButton("🚩 К началу")
                 });
             Buttons.ResizeKeyboard = true;
             DateTime date = DateTime.Now;
-            var Course = new CourseController(user, date);
             if (!user.IsSubscribed)
             {
-
                 user.IsSubscribed = true;
                 user.DateStartSubscribe = date;
                 await SendMessage(chatId, cancellationToken, Message, Buttons);
-                Course.SendTrainingCourceMessage();
-            } 
+                var courseController = new CourseController(user, _botClient);
+                courseController.StartSendingMaterials();
+            }
             else
             {
                 await SendMessage(chatId, cancellationToken, "Вы уже подписаны на курс. Обучающие материалы выходят каждую неделю. Следите за обновлениями", Buttons);
