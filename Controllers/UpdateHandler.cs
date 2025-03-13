@@ -52,6 +52,13 @@ namespace HRProBot.Controllers
 
             if (update.Type == UpdateType.Message && update.Message.Type == MessageType.Text && UserParams != null)
             {
+                //если начали собирать данные, но они еще не собраны до конца - дособираем
+                if (User.DataCollectStep > 0 && User.DataCollectStep < 5)
+                {
+                    await GetUserData(update, cancellationToken, User);
+                    return;
+                }
+
                 // Обработка обычных команд
                 switch (update.Message.Text)
                 {
