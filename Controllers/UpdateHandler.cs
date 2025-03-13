@@ -38,74 +38,72 @@ namespace HRProBot.Controllers
             var UserParams = update.Message?.From;
             string? BotName = Me.FirstName; //имя бота            
             long ChatId = update.Message.Chat.Id;
+            if (_userStates.TryGetValue(ChatId, out BotUser User))
+            {
+                User = _userStates[ChatId];                
+            } 
+            else
+            {
+                User = new BotUser();
+                _userStates.Add(ChatId, User);
+            }
+            User.Id = UserParams.Id;
 
 
             if (update.Type == UpdateType.Message && update.Message.Type == MessageType.Text && UserParams != null)
             {
-                if (_userStates.ContainsKey(ChatId))
+                // Обработка обычных команд
+                switch (update.Message.Text)
                 {
-                    // Если пользователь находится в процессе сбора данных
-                    var botUser = _userStates[ChatId];
-                    await GetUserData(update, cancellationToken, botUser);
-                    if (botUser.DataCollectStep == 0)
-                    {
-                        _userStates.Remove(ChatId); // Завершаем сбор данных
-                    }
-                }
-                else
-                {
-                    // Обработка обычных команд
-                    switch (update.Message.Text)
-                    {
-                        case "🚩 К началу":
-                        case "/start":
-                            await HandleStartCommand(ChatId, cancellationToken);
-                            break;
-                        case "📅 Подписаться на курс":
-                        case "/course":
-                            await HandleCourseCommand(ChatId, cancellationToken);
-                            break;
-                        case "🤵‍♂️ Узнать об экспертах":
-                        case "/experts":
-                            await HandleExpertsCommand(ChatId, cancellationToken);
-                            break;
-                        case "🔍 О системе HR Pro":
-                        case "/hrpro":
-                            await HandleAboutHrProCommand(ChatId, cancellationToken);
-                            break;
-                        case "🙋‍♂️ Задать вопрос эксперту":
-                        case "/ask":
-                            _userStates[ChatId] = new BotUser { DataCollectStep = 0 };
-                            await GetUserData(update, cancellationToken, _userStates[ChatId]);
-                            break;
-                        case "/mailing":
-                            if (IsBotAdministrator(UserParams))
-                            {
-                                await SendMessage(ChatId, cancellationToken, "Массовая рассылка началась", null);
-                            }
-                            break;
-                        case "/testmailing":
-                            if (IsBotAdministrator(UserParams))
-                            {
-                                await SendMessage(ChatId, cancellationToken, "Отправляю тестовую рассылку", null);
-                            }
-                            break;
-                        case "/report":
-                            if (IsBotAdministrator(UserParams))
-                            {
-                                await SendMessage(ChatId, cancellationToken, "Формирую отчет в Excel", null);
-                            }
-                            break;
-                        case "/answer":
-                            if (IsBotAdministrator(UserParams))
-                            {
-                                await SendMessage(ChatId, cancellationToken, "Введите id пользователя, которому вы хотите ответить", null);
-                            }
-                            break;
-                        default:
-                            await botClient.SendTextMessageAsync(ChatId, $"Попробуйте еще раз! Ник: {UserParams.Username}, Имя: {UserParams.FirstName}, id: {UserParams.Id} ");
-                            break;
-                    }
+                    case "🚩 К началу":
+                    case "/start":
+                        await HandleStartCommand(ChatId, cancellationToken);
+                        break;
+                    case "📅 Подписаться на курс":
+                    case "/course":
+                        await HandleCourseCommand(ChatId, cancellationToken, User);
+                        break;
+                    case "🤵‍♂️ Узнать об экспертах":
+                    case "/experts":
+                        await HandleExpertsCommand(ChatId, cancellationToken);
+                        break;
+                    case "🔍 О системе HR Pro":
+                    case "/hrpro":
+                        await HandleAboutHrProCommand(ChatId, cancellationToken);
+                        break;
+                    case "🙋‍♂️ Задать вопрос эксперту":
+                    case "/ask":
+                        User.DataCollectStep = 0;
+                        _userStates[ChatId] = User;
+                        await GetUserData(update, cancellationToken, _userStates[ChatId]);
+                        break;
+                    case "/mailing":
+                        if (IsBotAdministrator(UserParams))
+                        {
+                            await SendMessage(ChatId, cancellationToken, "Массовая рассылка началась", null);
+                        }
+                        break;
+                    case "/testmailing":
+                        if (IsBotAdministrator(UserParams))
+                        {
+                            await SendMessage(ChatId, cancellationToken, "Отправляю тестовую рассылку", null);
+                        }
+                        break;
+                    case "/report":
+                        if (IsBotAdministrator(UserParams))
+                        {
+                            await SendMessage(ChatId, cancellationToken, "Формирую отчет в Excel", null);
+                        }
+                        break;
+                    case "/answer":
+                        if (IsBotAdministrator(UserParams))
+                        {
+                            await SendMessage(ChatId, cancellationToken, "Введите id пользователя, которому вы хотите ответить", null);
+                        }
+                        break;
+                    default:
+                        await botClient.SendTextMessageAsync(ChatId, $"Попробуйте еще раз! Ник: {UserParams.Username}, Имя: {UserParams.FirstName}, id: {UserParams.Id} ");
+                        break;
                 }
             }
         }
@@ -156,18 +154,26 @@ namespace HRProBot.Controllers
         /// <param name="chatId"></param>
         /// <param name="cancellationToken"></param>
         /// <returns></returns>
-        private static async Task HandleCourseCommand(long chatId, CancellationToken cancellationToken)
+        private static async Task HandleCourseCommand(long chatId, CancellationToken cancellationToken, BotUser user)
         {
             string Message = _botMessagesData[2][3].ToString();
             var Buttons = new ReplyKeyboardMarkup(
                 new[] {
-                    new KeyboardButton("🚩 К началу")
+            new KeyboardButton("🚩 К началу")
                 });
             Buttons.ResizeKeyboard = true;
             DateTime date = DateTime.Now;
-            if (SubcribeToTrainingCource(date))
+            if (!user.IsSubscribed)
             {
+                user.IsSubscribed = true;
+                user.DateStartSubscribe = date;
                 await SendMessage(chatId, cancellationToken, Message, Buttons);
+                var courseController = new CourseController(user, _botClient);
+                courseController.StartSendingMaterials();
+            }
+            else
+            {
+                await SendMessage(chatId, cancellationToken, "Вы уже подписаны на курс. Обучающие материалы выходят каждую неделю. Следите за обновлениями", Buttons);
             }
         }
         /// <summary>
@@ -215,11 +221,24 @@ namespace HRProBot.Controllers
         /// <returns></returns>
         static async Task SendMessage(long chatId, CancellationToken cancellationToken, string textMessage, ReplyKeyboardMarkup? buttons)
         {
-            await _botClient.SendTextMessageAsync(
-            chatId: chatId,
-            text: textMessage,
-            replyMarkup: buttons,
-            cancellationToken: cancellationToken);
+            ReplyKeyboardRemove removeKeyboard = new ReplyKeyboardRemove();
+
+            if (buttons == null)
+            {
+                await _botClient.SendTextMessageAsync(
+                chatId: chatId,
+                text: textMessage,
+                replyMarkup: removeKeyboard,
+                cancellationToken: cancellationToken);
+            } 
+            else
+            {
+                await _botClient.SendTextMessageAsync(
+                chatId: chatId,
+                text: textMessage,
+                replyMarkup: buttons,
+                cancellationToken: cancellationToken);
+            }
         }
         /// <summary>
         /// Отправка фотки с текстом
@@ -305,14 +324,10 @@ namespace HRProBot.Controllers
             }
         }
 
-        static bool SubcribeToTrainingCource(DateTime date)
-        {
-            return true;
-        }
-
         private static async Task GetUserData(Update update, CancellationToken cancellationToken, BotUser botUser)
         {
             long ChatId = update.Message.Chat.Id;
+            var regular = new RegularValidation();
 
             switch (botUser.DataCollectStep)
             {
@@ -322,25 +337,61 @@ namespace HRProBot.Controllers
                     botUser.DataCollectStep = 1;
                     break;
                 case 1:
-                    botUser.FirstName = update.Message.Text;
-                    await SendMessage(ChatId, cancellationToken, "Пожалуйста, введите вашу фамилию:", null);
-                    botUser.DataCollectStep = 2;
+                    if (regular.ValidateName(update.Message.Text))
+                    {
+                        botUser.FirstName = update.Message.Text;
+                        await SendMessage(ChatId, cancellationToken, "Пожалуйста, введите вашу фамилию:", null);
+                        botUser.DataCollectStep = 2;
+                    }
+                    else
+                    {
+                        await SendMessage(ChatId, cancellationToken, "Имя неверное, введите правильное имя", null);
+                    } 
                     break;
                 case 2:
-                    botUser.LastName = update.Message.Text;
-                    await SendMessage(ChatId, cancellationToken, "Пожалуйста, введите вашу организацию:", null);
-                    botUser.DataCollectStep = 3;
+                    if (regular.ValidateName(update.Message.Text))
+                    {
+                        botUser.LastName = update.Message.Text;
+                        await SendMessage(ChatId, cancellationToken, "Пожалуйста, введите вашу организацию:", null);
+                        botUser.DataCollectStep = 3;
+                    }
+                    else
+                    {
+                        await SendMessage(ChatId, cancellationToken, "Фамилия неверная, введите правильную фамилию", null);
+                    }                    
                     break;
                 case 3:
-                    botUser.Organization = update.Message.Text;
-                    await SendMessage(ChatId, cancellationToken, "Пожалуйста, введите ваш телефон:", null);
-                    botUser.DataCollectStep = 4;
+                    if (regular.ValidateOrganization(update.Message.Text))
+                    {
+                        botUser.Organization = update.Message.Text;
+                        await SendMessage(ChatId, cancellationToken, "Пожалуйста, введите ваш телефон:", null);
+                        botUser.DataCollectStep = 4;
+                    }
+                    else
+                    {
+                        await SendMessage(ChatId, cancellationToken, "Организация неверная, введите правильную организацию", null);
+                    }
                     break;
                 case 4:
-                    botUser.Phone = update.Message.Text;
-                    await SendMessage(ChatId, cancellationToken, "Спасибо, ваши данные сохранены", null);
-                    await SendMessage(ChatId, cancellationToken, $"Имя: {botUser.FirstName}\nФамилия: {botUser.LastName}\nОрганизация: {botUser.Organization}\nТелефон: {botUser.Phone}", null);
-                    botUser.DataCollectStep = 0; // Сброс состояния для нового диалога
+                    if (regular.ValidatePhone(update.Message.Text))
+                    {
+                        botUser.Phone = update.Message.Text;
+                        var Buttons = new ReplyKeyboardMarkup(
+                                       new[] {
+                                        new KeyboardButton("🚩 К началу")
+                                       });
+                        Buttons.ResizeKeyboard = true;
+                        await SendMessage(ChatId, cancellationToken, "Спасибо, ваши данные сохранены", null);
+                        await SendMessage(ChatId, cancellationToken,
+                            $"Имя: {botUser.FirstName}\nФамилия: {botUser.LastName}\nОрганизация: {botUser.Organization}\nТелефон: {botUser.Phone}\nId пользователя: {botUser.Id}",
+                            Buttons);
+                        botUser.DataCollectStep = 0; // Сброс состояния для нового диалога
+                    }
+                    else
+                    {
+                        await SendMessage(ChatId, cancellationToken, "Телефон неверный, введите правильный номер телефона", null);
+                    }
+                    
                     break;
             }
         }

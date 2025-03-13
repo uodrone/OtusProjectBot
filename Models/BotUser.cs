@@ -10,6 +10,8 @@
         public string? Phone { get; set; }
         public string? Question { get; set; }
         public bool IsSubscribed { get; set; }
+        public DateTime? DateStartSubscribe { get; set; }
         public int DataCollectStep {  get; set; }
+        public int CurrentCourseStep { get; set; } = 1;
     }
 }
