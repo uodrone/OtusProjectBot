@@ -6,6 +6,8 @@ using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
+using OfficeOpenXml;
+using System.IO;
 
 namespace HRProBot.Controllers
 {
@@ -48,10 +50,18 @@ namespace HRProBot.Controllers
                 _userStates.Add(ChatId, User);
             }
             User.Id = UserParams.Id;
+            User.UserName = UserParams.Username;
 
 
             if (update.Type == UpdateType.Message && update.Message.Type == MessageType.Text && UserParams != null)
             {
+                //если начали собирать данные, но они еще не собраны до конца - дособираем
+                if (User.DataCollectStep > 0 && User.DataCollectStep < 6)
+                {
+                    await GetUserData(update, cancellationToken, User);
+                    return;
+                }
+
                 // Обработка обычных команд
                 switch (update.Message.Text)
                 {
@@ -72,8 +82,11 @@ namespace HRProBot.Controllers
                         await HandleAboutHrProCommand(ChatId, cancellationToken);
                         break;
                     case "🙋‍♂️ Задать вопрос эксперту":
-                    case "/ask":
-                        User.DataCollectStep = 0;
+                    case "/ask":   
+                        if (User.DataCollectStep == 6)
+                        {
+                            User.DataCollectStep = 5;
+                        }
                         _userStates[ChatId] = User;
                         await GetUserData(update, cancellationToken, _userStates[ChatId]);
                         break;
@@ -92,7 +105,12 @@ namespace HRProBot.Controllers
                     case "/report":
                         if (IsBotAdministrator(UserParams))
                         {
-                            await SendMessage(ChatId, cancellationToken, "Формирую отчет в Excel", null);
+                            var reportStream = GenerateUserReport(_userStates.Values);
+                            await _botClient.SendDocumentAsync(
+                                chatId: ChatId,
+                                document: new InputFileStream(reportStream, "UsersReport.xlsx"),
+                                caption: "Отчет по пользователям",
+                                cancellationToken: cancellationToken);
                         }
                         break;
                     case "/answer":
@@ -328,72 +346,182 @@ namespace HRProBot.Controllers
         {
             long ChatId = update.Message.Chat.Id;
             var regular = new RegularValidation();
+            var Buttons = new ReplyKeyboardMarkup(
+                            new[] {
+                            new KeyboardButton("🚩 К началу")
+                            });
+            Buttons.ResizeKeyboard = true;
 
             switch (botUser.DataCollectStep)
             {
                 case 0:
+                    if (update.Message.Text == "🚩 К началу" || update.Message.Text == "/start")
+                    {
+                        await HandleStartCommand(ChatId, cancellationToken);
+                        botUser.DataCollectStep = 0;
+                        return;
+                    }
+
                     await SendMessage(ChatId, cancellationToken, "Наш эксперт ответит на ваш вопрос в течение 3 рабочих дней. Чтобы сформировать обращение мы должны знать ваши данные.", null);
-                    await SendMessage(ChatId, cancellationToken, "Пожалуйста, введите ваше имя:", null);
+                    await SendMessage(ChatId, cancellationToken, "Пожалуйста, введите ваше имя:", Buttons);
                     botUser.DataCollectStep = 1;
                     break;
                 case 1:
-                    if (regular.ValidateName(update.Message.Text))
+                    if (update.Message.Text == "🚩 К началу" || update.Message.Text == "/start")
+                    {
+                        await HandleStartCommand(ChatId, cancellationToken);
+                        botUser.DataCollectStep = 0;
+                        return;
+                    }
+                    else if (regular.ValidateName(update.Message.Text))
                     {
                         botUser.FirstName = update.Message.Text;
-                        await SendMessage(ChatId, cancellationToken, "Пожалуйста, введите вашу фамилию:", null);
+                        await SendMessage(ChatId, cancellationToken, "Пожалуйста, введите вашу фамилию:", Buttons);
                         botUser.DataCollectStep = 2;
                     }
                     else
                     {
-                        await SendMessage(ChatId, cancellationToken, "Имя неверное, введите правильное имя", null);
+                        await SendMessage(ChatId, cancellationToken, "Имя неверное, введите правильное имя", Buttons);
                     } 
                     break;
                 case 2:
-                    if (regular.ValidateName(update.Message.Text))
+                    if (update.Message.Text == "🚩 К началу" || update.Message.Text == "/start")
+                    {
+                        await HandleStartCommand(ChatId, cancellationToken);
+                        botUser.DataCollectStep = 0;
+                        return;
+                    }
+                    else if (!string.IsNullOrEmpty(update.Message.Text))
                     {
                         botUser.LastName = update.Message.Text;
-                        await SendMessage(ChatId, cancellationToken, "Пожалуйста, введите вашу организацию:", null);
+                        await SendMessage(ChatId, cancellationToken, "Пожалуйста, введите вашу организацию:", Buttons);
                         botUser.DataCollectStep = 3;
                     }
                     else
                     {
-                        await SendMessage(ChatId, cancellationToken, "Фамилия неверная, введите правильную фамилию", null);
+                        await SendMessage(ChatId, cancellationToken, "Фамилия неверная, введите правильную фамилию", Buttons);
                     }                    
                     break;
                 case 3:
-                    if (regular.ValidateOrganization(update.Message.Text))
+                    if (update.Message.Text == "🚩 К началу" || update.Message.Text == "/start")
+                    {
+                        await HandleStartCommand(ChatId, cancellationToken);
+                        botUser.DataCollectStep = 0;
+                        return;
+                    }
+                    else if (regular.ValidateOrganization(update.Message.Text))
                     {
                         botUser.Organization = update.Message.Text;
-                        await SendMessage(ChatId, cancellationToken, "Пожалуйста, введите ваш телефон:", null);
+                        await SendMessage(ChatId, cancellationToken, "Пожалуйста, введите ваш телефон:", Buttons);
                         botUser.DataCollectStep = 4;
                     }
                     else
                     {
-                        await SendMessage(ChatId, cancellationToken, "Организация неверная, введите правильную организацию", null);
+                        await SendMessage(ChatId, cancellationToken, "Организация неверная, введите правильную организацию", Buttons);
                     }
                     break;
                 case 4:
-                    if (regular.ValidatePhone(update.Message.Text))
+                    if (update.Message.Text == "🚩 К началу" || update.Message.Text == "/start")
+                    {
+                        await HandleStartCommand(ChatId, cancellationToken);
+                        botUser.DataCollectStep = 0;
+                        return;
+                    }
+                    else if (regular.ValidatePhone(update.Message.Text))
                     {
                         botUser.Phone = update.Message.Text;
-                        var Buttons = new ReplyKeyboardMarkup(
-                                       new[] {
-                                        new KeyboardButton("🚩 К началу")
-                                       });
-                        Buttons.ResizeKeyboard = true;
                         await SendMessage(ChatId, cancellationToken, "Спасибо, ваши данные сохранены", null);
                         await SendMessage(ChatId, cancellationToken,
-                            $"Имя: {botUser.FirstName}\nФамилия: {botUser.LastName}\nОрганизация: {botUser.Organization}\nТелефон: {botUser.Phone}\nId пользователя: {botUser.Id}",
-                            Buttons);
-                        botUser.DataCollectStep = 0; // Сброс состояния для нового диалога
+                            $"Имя: {botUser.FirstName}\nФамилия: {botUser.LastName}\nОрганизация: {botUser.Organization}\nТелефон: {botUser.Phone}\nId пользователя: {botUser.Id}", null);
+                        await SendMessage(ChatId, cancellationToken, "Пожалуйста, введите ваш запрос:", Buttons);
+                        botUser.DataCollectStep = 5;
                     }
                     else
                     {
-                        await SendMessage(ChatId, cancellationToken, "Телефон неверный, введите правильный номер телефона", null);
+                        await SendMessage(ChatId, cancellationToken, "Телефон неверный, введите правильный номер телефона", Buttons);
                     }
                     
                     break;
+                case 5:
+                    if (update.Message.Text == "🚩 К началу" || update.Message.Text == "/start")
+                    {
+                        await HandleStartCommand(ChatId, cancellationToken);
+                        botUser.DataCollectStep = 0;
+                        return;
+                    }
+                    else if (!string.IsNullOrEmpty(update.Message.Text))
+                    {
+                        // Игнорируем текст кнопки или команду "/ask"
+                        if (update.Message.Text == "🙋‍♂️ Задать вопрос эксперту" || update.Message.Text == "/ask")
+                        {
+                            await SendMessage(ChatId, cancellationToken, "Пожалуйста, введите ваш запрос:", Buttons);
+                            return; // При вызове повторного вопроса прерываем выполнение, чтобы дождаться следующего ввода собственно вопроса
+                        }
+                        botUser.Question = string.IsNullOrEmpty(botUser.Question) ? update.Message.Text : $"{botUser.Question}; {update.Message.Text}";
+                        
+                        Buttons.ResizeKeyboard = true;
+                        await SendMessage(ChatId, cancellationToken, $"Спасибо, ваш вопрос получен:\n{botUser.Question}", Buttons);
+                        botUser.DataCollectStep = 6;
+                    }
+                    else
+                    {
+                        await SendMessage(ChatId, cancellationToken, "Введите не пустой вопрос", null);
+                    }
+
+                    break;
             }
+        }
+
+        public static MemoryStream GenerateUserReport(IEnumerable<BotUser> users)
+        {
+            ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
+            using var package = new ExcelPackage();
+            var worksheet = package.Workbook.Worksheets.Add("UsersReport");
+
+            // Заголовки столбцов
+            worksheet.Cells[1, 1].Value = "ID";
+            worksheet.Cells[1, 2].Value = "Ник";
+            worksheet.Cells[1, 3].Value = "Имя";
+            worksheet.Cells[1, 4].Value = "Фамилия";
+            worksheet.Cells[1, 5].Value = "Организация";
+            worksheet.Cells[1, 6].Value = "Телефон";
+            worksheet.Cells[1, 7].Value = "Вопрос";
+            worksheet.Cells[1, 8].Value = "Подписан на курс?";
+            worksheet.Cells[1, 9].Value = "Дата подписки на курс";
+            worksheet.Cells[1, 10].Value = "Этап отправки курсов";
+
+            // Стиль для заголовков
+            using (var range = worksheet.Cells[1, 1, 1, 11])
+            {
+                range.Style.Font.Bold = true;
+                range.Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
+                range.Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightBlue);
+            }
+
+            // Заполнение данных
+            int row = 2;
+            foreach (var user in users)
+            {
+                worksheet.Cells[row, 1].Value = user.Id;
+                worksheet.Cells[row, 2].Value = user.UserName;
+                worksheet.Cells[row, 3].Value = user.FirstName;
+                worksheet.Cells[row, 4].Value = user.LastName;
+                worksheet.Cells[row, 5].Value = user.Organization;
+                worksheet.Cells[row, 6].Value = user.Phone;
+                worksheet.Cells[row, 7].Value = user.Question;
+                worksheet.Cells[row, 8].Value = user.IsSubscribed ? "Yes" : "No";
+                worksheet.Cells[row, 9].Value = user.DateStartSubscribe?.ToString("dd.MM.yyyy");
+                worksheet.Cells[row, 10].Value = user.CurrentCourseStep;
+                row++;
+            }
+
+            // Авто-ширина для всех колонок
+            worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
+
+            var stream = new MemoryStream();
+            package.SaveAs(stream);
+            stream.Position = 0;
+            return stream;
         }
     }
 }
