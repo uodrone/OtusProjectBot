@@ -6,18 +6,31 @@ namespace HRProBot.Controllers
 {
     public class AppDbContext : DbContext
     {
-        public DbSet<BotUser> _botUsers { get; set; }
-        string _connectionPath;
+        public DbSet<BotUser> BotUsers { get; set; }
+        private readonly string _connectionString;
 
-        public AppDbContext(DbSet<BotUser> botUsers, IOptionsSnapshot<AppSettings> appSettings)
+        // Конструктор должен принимать только конфигурацию
+        public AppDbContext(DbContextOptions<AppDbContext> options, IOptions<AppSettings> appSettings):base(options)
         {
-            _botUsers = botUsers;
-            _connectionPath = appSettings.Value.DBConnection;
+            _connectionString = appSettings.Value.DBConnection;
         }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
-            optionsBuilder.UseNpgsql(_connectionPath);
+            if (!optionsBuilder.IsConfigured)
+            {
+                optionsBuilder.UseNpgsql(_connectionString);
+            }
+        }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<BotUser>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.FirstName).HasMaxLength(100);
+                entity.Property(e => e.LastName).HasMaxLength(100);
+            });
         }
     }
 }

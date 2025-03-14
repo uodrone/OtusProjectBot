@@ -8,25 +8,41 @@ using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 using OfficeOpenXml;
 using System.IO;
+using Microsoft.EntityFrameworkCore;
 
 namespace HRProBot.Controllers
 {
     public class UpdateHandler : IUpdateHandler
     {
+        private static AppDbContext _context;
         private static string[] _administrators;
         private static GoogleSheetsController _googleSheets;
         private static ITelegramBotClient _botClient;
         private static IList<IList<object>> _botMessagesData;
         private static Dictionary<long, BotUser> _userStates = new Dictionary<long, BotUser>();
 
-        public UpdateHandler(IOptionsSnapshot<AppSettings> appSettings, ITelegramBotClient botClient)
+        public UpdateHandler(IOptionsSnapshot<AppSettings> appSettings, ITelegramBotClient botClient, AppDbContext context)
         {
+            _context = context;
             _administrators = appSettings.Value.TlgBotAdministrators.Split(';');
             _googleSheets = new GoogleSheetsController(appSettings);
             _botClient = botClient;
             var range = appSettings.Value.GoogleSheetsRange;
             _botMessagesData = _googleSheets.GetData(range);
             var cts = new CancellationTokenSource(); // прерыватель соединения с ботом
+        }
+
+        private BotUser CreateNewUser(User userParams)
+        {
+            var newUser = new BotUser
+            {
+                Id = userParams.Id,
+                UserName = userParams.Username,
+                FirstName = userParams.FirstName
+            };
+
+            _context.BotUsers.Add(newUser);
+            return newUser;
         }
 
         public async Task HandleErrorAsync(ITelegramBotClient botClient, Exception exception, HandleErrorSource source, CancellationToken cancellationToken)
@@ -38,19 +54,14 @@ namespace HRProBot.Controllers
         {
             var Me = await botClient.GetMe();
             var UserParams = update.Message?.From;
+            // Получаем или создаем пользователя из БД
+            var User = await _context.BotUsers
+                .FirstOrDefaultAsync(u => u.Id == UserParams.Id)
+                ?? CreateNewUser(UserParams);
+
+
             string? BotName = Me.FirstName; //имя бота            
-            long ChatId = update.Message.Chat.Id;
-            if (_userStates.TryGetValue(ChatId, out BotUser User))
-            {
-                User = _userStates[ChatId];                
-            } 
-            else
-            {
-                User = new BotUser();
-                _userStates.Add(ChatId, User);
-            }
-            User.Id = UserParams.Id;
-            User.UserName = UserParams.Username;
+            long ChatId = update.Message.Chat.Id;            
 
 
             if (update.Type == UpdateType.Message && update.Message.Type == MessageType.Text && UserParams != null)
@@ -87,8 +98,8 @@ namespace HRProBot.Controllers
                         {
                             User.DataCollectStep = 5;
                         }
-                        _userStates[ChatId] = User;
-                        await GetUserData(update, cancellationToken, _userStates[ChatId]);
+                        
+                        await GetUserData(update, cancellationToken, User);
                         break;
                     case "/mailing":
                         if (IsBotAdministrator(UserParams))
@@ -105,7 +116,15 @@ namespace HRProBot.Controllers
                     case "/report":
                         if (IsBotAdministrator(UserParams))
                         {
-                            var reportStream = GenerateUserReport(_userStates.Values);
+                            // Получаем данные из БД
+                            var users = await _context.BotUsers
+                                .AsNoTracking()
+                                .ToListAsync(cancellationToken);
+
+                            // Генерируем отчет
+                            await using var reportStream = GenerateUserReport(users);
+
+                            // Отправляем файл
                             await _botClient.SendDocumentAsync(
                                 chatId: ChatId,
                                 document: new InputFileStream(reportStream, "UsersReport.xlsx"),
@@ -185,8 +204,10 @@ namespace HRProBot.Controllers
             {
                 user.IsSubscribed = true;
                 user.DateStartSubscribe = date;
+                _context.Entry(user).State = EntityState.Modified;
+
                 await SendMessage(chatId, cancellationToken, Message, Buttons);
-                var courseController = new CourseController(user, _botClient);
+                var courseController = new CourseController(user, _botClient, _context);
                 courseController.StartSendingMaterials();
             }
             else
@@ -470,6 +491,8 @@ namespace HRProBot.Controllers
 
                     break;
             }
+
+            _context.Entry(botUser).State = EntityState.Modified;    
         }
 
         public static MemoryStream GenerateUserReport(IEnumerable<BotUser> users)
