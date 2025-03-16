@@ -61,6 +61,10 @@ namespace HRProBot.Controllers
                 {
                     await _botClient.SendTextMessageAsync(_user.Id, CourseMessage);
                 }
+            } 
+            else
+            {
+                await _botClient.SendTextMessageAsync(_user.Id, "Ошибка подписки");
             }
         }
 

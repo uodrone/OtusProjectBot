@@ -64,19 +64,6 @@ namespace HRProBot.Controllers
                 }
             }
 
-            /*if (_users.Where(x => x.Id == UserParams.Id).FirstOrDefault() != null)
-            {
-                User = _users.Where(x => x.Id == UserParams.Id).FirstOrDefault();
-            }
-            else
-            {
-                User = new BotUser() { 
-                    Id = UserParams.Id,
-                    UserName = UserParams.Username 
-                };
-                _users.Add(User);
-            }*/
-
 
             if (update.Type == UpdateType.Message && update.Message.Type == MessageType.Text && UserParams != null)
             {
@@ -96,7 +83,7 @@ namespace HRProBot.Controllers
                         break;
                     case "📅 Подписаться на курс":
                     case "/course":
-                        await HandleCourseCommand(ChatId, cancellationToken, _user);
+                        await HandleCourseCommand(ChatId, cancellationToken);
                         break;
                     case "🤵‍♂️ Узнать об экспертах":
                     case "/experts":
@@ -145,7 +132,13 @@ namespace HRProBot.Controllers
                         }
                         break;
                     default:
-                        await botClient.SendTextMessageAsync(ChatId, $"Попробуйте еще раз! Ник: {UserParams.Username}, Имя: {UserParams.FirstName}, id: {UserParams.Id} ");
+                        var Buttons = new ReplyKeyboardMarkup(
+                            new[] {
+                                 new KeyboardButton("🚩 К началу")
+                            });
+                        Buttons.ResizeKeyboard = true;
+                        var Message = $"Попробуйте еще раз! Ник: {UserParams.Username}, Имя: {UserParams.FirstName}, id: {UserParams.Id} ";
+                        await SendMessage(ChatId, cancellationToken, Message, Buttons);                        
                         break;
                 }
             }
@@ -197,7 +190,7 @@ namespace HRProBot.Controllers
         /// <param name="chatId"></param>
         /// <param name="cancellationToken"></param>
         /// <returns></returns>
-        private static async Task HandleCourseCommand(long chatId, CancellationToken cancellationToken, BotUser user)
+        private static async Task HandleCourseCommand(long chatId, CancellationToken cancellationToken)
         {
             string Message = _botMessagesData[2][3].ToString();
             var Buttons = new ReplyKeyboardMarkup(
@@ -206,12 +199,14 @@ namespace HRProBot.Controllers
                 });
             Buttons.ResizeKeyboard = true;
             DateTime date = DateTime.Now;
-            if (!user.IsSubscribed)
+            if (!_user.IsSubscribed)
             {
-                user.IsSubscribed = true;
-                user.DateStartSubscribe = date;
+                _user.IsSubscribed = true;
+                _user.DateStartSubscribe = date;
+                var AppDbUpdate = new AppDBUpdate();
+                AppDbUpdate.UserDbUpdate(_user, _dbConnection);
                 await SendMessage(chatId, cancellationToken, Message, Buttons);
-                var courseController = new CourseController(user, _botClient, _dbConnection);
+                var courseController = new CourseController(_user, _botClient, _dbConnection);
                 courseController.StartSendingMaterials();
             }
             else
@@ -495,10 +490,23 @@ namespace HRProBot.Controllers
                             return; // При вызове повторного вопроса прерываем выполнение, чтобы дождаться следующего ввода собственно вопроса
                         }
 
-                        _user.Question.Add(update.Message.Text);
+                        // Создаем новый вопрос  
+                        var question = new UserQuestion
+                        {
+                            BotUserId = _user.Id,
+                            QuestionText = update.Message.Text
+                        };
+
+                        using (var db = new LinqToDB.Data.DataConnection(ProviderName.PostgreSQL, _dbConnection))
+                        {
+                            var table = db.GetTable<UserQuestion>();                                                    
+
+                            // Вставляем вопрос в таблицу UserQuestion
+                            db.Insert(question);
+                        }                        
 
                         Buttons.ResizeKeyboard = true;
-                        await SendMessage(ChatId, cancellationToken, $"Спасибо, ваш вопрос получен:\n{string.Join("; ", _user.Question)}", Buttons);
+                        await SendMessage(ChatId, cancellationToken, $"Спасибо, ваш вопрос получен:\n{question.QuestionText}", Buttons);
                         _user.DataCollectStep = 6;
                         AppDbUpdate.UserDbUpdate(_user, _dbConnection);
                     }
@@ -516,13 +524,6 @@ namespace HRProBot.Controllers
             ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
             using var package = new ExcelPackage();
             var worksheet = package.Workbook.Worksheets.Add("UsersReport");
-            var allUsers = new List<BotUser>();
-
-            using (var db = new LinqToDB.Data.DataConnection(ProviderName.PostgreSQL, _dbConnection))
-            {
-                var table = db.GetTable<BotUser>();
-                allUsers = table.ToList();
-            }
 
             // Заголовки столбцов
             worksheet.Cells[1, 1].Value = "ID";
@@ -531,34 +532,49 @@ namespace HRProBot.Controllers
             worksheet.Cells[1, 4].Value = "Фамилия";
             worksheet.Cells[1, 5].Value = "Организация";
             worksheet.Cells[1, 6].Value = "Телефон";
-            worksheet.Cells[1, 7].Value = "Вопрос";
+            worksheet.Cells[1, 7].Value = "Вопросы";
             worksheet.Cells[1, 8].Value = "Подписан на курс?";
             worksheet.Cells[1, 9].Value = "Дата подписки на курс";
             worksheet.Cells[1, 10].Value = "Этап отправки курсов";
 
             // Стиль для заголовков
-            using (var range = worksheet.Cells[1, 1, 1, 11])
+            using (var range = worksheet.Cells[1, 1, 1, 10])
             {
                 range.Style.Font.Bold = true;
                 range.Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
                 range.Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightBlue);
             }
 
-            // Заполнение данных
-            int row = 2;
-            foreach (var user in allUsers)
+            using (var db = new LinqToDB.Data.DataConnection(ProviderName.PostgreSQL, _dbConnection))
             {
-                worksheet.Cells[row, 1].Value = user.Id;
-                worksheet.Cells[row, 2].Value = user.UserName;
-                worksheet.Cells[row, 3].Value = user.FirstName;
-                worksheet.Cells[row, 4].Value = user.LastName;
-                worksheet.Cells[row, 5].Value = user.Organization;
-                worksheet.Cells[row, 6].Value = user.Phone;
-                worksheet.Cells[row, 7].Value = string.Join("; ", user.Question);
-                worksheet.Cells[row, 8].Value = user.IsSubscribed ? "Yes" : "No";
-                worksheet.Cells[row, 9].Value = user.DateStartSubscribe?.ToString("dd.MM.yyyy");
-                worksheet.Cells[row, 10].Value = user.CurrentCourseStep;
-                row++;
+                // Получаем всех пользователей
+                var allUsers = db.GetTable<BotUser>().ToList();
+                // Получаем все вопросы
+                var allQuestions = db.GetTable<UserQuestion>().ToList();
+
+                // Заполнение данных
+                int row = 2;
+                foreach (var user in allUsers)
+                {
+                    worksheet.Cells[row, 1].Value = user.Id;
+                    worksheet.Cells[row, 2].Value = user.UserName;
+                    worksheet.Cells[row, 3].Value = user.FirstName;
+                    worksheet.Cells[row, 4].Value = user.LastName;
+                    worksheet.Cells[row, 5].Value = user.Organization;
+                    worksheet.Cells[row, 6].Value = user.Phone;
+
+                    // Получаем вопросы пользователя и объединяем их через ";"
+                    var userQuestions = allQuestions
+                        .Where(q => q.BotUserId == user.Id)
+                        .Select(q => q.QuestionText)
+                        .ToList();
+                    worksheet.Cells[row, 7].Value = string.Join("; ", userQuestions);
+
+                    worksheet.Cells[row, 8].Value = user.IsSubscribed ? "Yes" : "No";
+                    worksheet.Cells[row, 9].Value = user.DateStartSubscribe?.ToString("dd.MM.yyyy");
+                    worksheet.Cells[row, 10].Value = user.CurrentCourseStep;
+                    row++;
+                }
             }
 
             // Авто-ширина для всех колонок
