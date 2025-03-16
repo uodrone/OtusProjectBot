@@ -8,7 +8,6 @@ using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 using OfficeOpenXml;
 using System.IO;
-using Microsoft.EntityFrameworkCore;
 
 namespace HRProBot.Controllers
 {
@@ -19,11 +18,11 @@ namespace HRProBot.Controllers
         private static GoogleSheetsController _googleSheets;
         private static ITelegramBotClient _botClient;
         private static IList<IList<object>> _botMessagesData;
+        private static List<BotUser> _users = new List<BotUser>();
         private static Dictionary<long, BotUser> _userStates = new Dictionary<long, BotUser>();
 
         public UpdateHandler(IOptionsSnapshot<AppSettings> appSettings, ITelegramBotClient botClient, AppDbContext context)
         {
-            _context = context;
             _administrators = appSettings.Value.TlgBotAdministrators.Split(';');
             _googleSheets = new GoogleSheetsController(appSettings);
             _botClient = botClient;
@@ -32,36 +31,41 @@ namespace HRProBot.Controllers
             var cts = new CancellationTokenSource(); // прерыватель соединения с ботом
         }
 
-        private BotUser CreateNewUser(User userParams)
-        {
-            var newUser = new BotUser
-            {
-                Id = userParams.Id,
-                UserName = userParams.Username,
-                FirstName = userParams.FirstName
-            };
-
-            _context.BotUsers.Add(newUser);
-            return newUser;
-        }
-
         public async Task HandleErrorAsync(ITelegramBotClient botClient, Exception exception, HandleErrorSource source, CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            throw new NotImplementedException("Неизвестная ошибка обработки");
         }
 
         public async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
         {
             var Me = await botClient.GetMe();
             var UserParams = update.Message?.From;
-            // Получаем или создаем пользователя из БД
-            var User = await _context.BotUsers
-                .FirstOrDefaultAsync(u => u.Id == UserParams.Id)
-                ?? CreateNewUser(UserParams);
-
-
             string? BotName = Me.FirstName; //имя бота            
-            long ChatId = update.Message.Chat.Id;            
+            long ChatId = update.Message.Chat.Id;
+            BotUser User;
+            if (_users.Where(x => x.Id == UserParams.Id).FirstOrDefault() != null)
+            {
+                User = _users.Where(x => x.Id == UserParams.Id).FirstOrDefault();
+            }
+            else
+            {
+                User = new BotUser() { 
+                    Id = UserParams.Id,
+                    UserName = UserParams.Username 
+                };
+                _users.Add(User);
+            }
+            
+
+            /*if (_userStates.TryGetValue(ChatId, out BotUser User))
+            {
+                User = _userStates[ChatId];
+            }
+            else
+            {
+                User = new BotUser();
+                _userStates.Add(ChatId, User);
+            }*/
 
 
             if (update.Type == UpdateType.Message && update.Message.Type == MessageType.Text && UserParams != null)
@@ -93,7 +97,7 @@ namespace HRProBot.Controllers
                         await HandleAboutHrProCommand(ChatId, cancellationToken);
                         break;
                     case "🙋‍♂️ Задать вопрос эксперту":
-                    case "/ask":   
+                    case "/ask":
                         if (User.DataCollectStep == 6)
                         {
                             User.DataCollectStep = 5;
@@ -116,15 +120,7 @@ namespace HRProBot.Controllers
                     case "/report":
                         if (IsBotAdministrator(UserParams))
                         {
-                            // Получаем данные из БД
-                            var users = await _context.BotUsers
-                                .AsNoTracking()
-                                .ToListAsync(cancellationToken);
-
-                            // Генерируем отчет
-                            await using var reportStream = GenerateUserReport(users);
-
-                            // Отправляем файл
+                            var reportStream = GenerateUserReport(_users);
                             await _botClient.SendDocumentAsync(
                                 chatId: ChatId,
                                 document: new InputFileStream(reportStream, "UsersReport.xlsx"),
@@ -204,8 +200,6 @@ namespace HRProBot.Controllers
             {
                 user.IsSubscribed = true;
                 user.DateStartSubscribe = date;
-                _context.Entry(user).State = EntityState.Modified;
-
                 await SendMessage(chatId, cancellationToken, Message, Buttons);
                 var courseController = new CourseController(user, _botClient, _context);
                 courseController.StartSendingMaterials();
@@ -269,7 +263,7 @@ namespace HRProBot.Controllers
                 text: textMessage,
                 replyMarkup: removeKeyboard,
                 cancellationToken: cancellationToken);
-            } 
+            }
             else
             {
                 await _botClient.SendTextMessageAsync(
@@ -403,7 +397,7 @@ namespace HRProBot.Controllers
                     else
                     {
                         await SendMessage(ChatId, cancellationToken, "Имя неверное, введите правильное имя", Buttons);
-                    } 
+                    }
                     break;
                 case 2:
                     if (update.Message.Text == "🚩 К началу" || update.Message.Text == "/start")
@@ -421,7 +415,7 @@ namespace HRProBot.Controllers
                     else
                     {
                         await SendMessage(ChatId, cancellationToken, "Фамилия неверная, введите правильную фамилию", Buttons);
-                    }                    
+                    }
                     break;
                 case 3:
                     if (update.Message.Text == "🚩 К началу" || update.Message.Text == "/start")
@@ -461,7 +455,7 @@ namespace HRProBot.Controllers
                     {
                         await SendMessage(ChatId, cancellationToken, "Телефон неверный, введите правильный номер телефона", Buttons);
                     }
-                    
+
                     break;
                 case 5:
                     if (update.Message.Text == "🚩 К началу" || update.Message.Text == "/start")
@@ -479,7 +473,7 @@ namespace HRProBot.Controllers
                             return; // При вызове повторного вопроса прерываем выполнение, чтобы дождаться следующего ввода собственно вопроса
                         }
                         botUser.Question = string.IsNullOrEmpty(botUser.Question) ? update.Message.Text : $"{botUser.Question}; {update.Message.Text}";
-                        
+
                         Buttons.ResizeKeyboard = true;
                         await SendMessage(ChatId, cancellationToken, $"Спасибо, ваш вопрос получен:\n{botUser.Question}", Buttons);
                         botUser.DataCollectStep = 6;
@@ -491,8 +485,6 @@ namespace HRProBot.Controllers
 
                     break;
             }
-
-            _context.Entry(botUser).State = EntityState.Modified;    
         }
 
         public static MemoryStream GenerateUserReport(IEnumerable<BotUser> users)

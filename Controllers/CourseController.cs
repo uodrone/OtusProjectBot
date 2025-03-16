@@ -2,95 +2,70 @@
 using System.Threading;
 using System.Threading.Tasks;
 using HRProBot.Models;
-using Microsoft.EntityFrameworkCore;
 using Telegram.Bot;
 
 namespace HRProBot.Controllers
 {
-    public class CourseController : IDisposable
+    public class CourseController
     {
-        private readonly BotUser _user;
-        private readonly ITelegramBotClient _botClient;
-        private readonly AppDbContext _context;
+        private BotUser _user;
+        private ITelegramBotClient _botClient;
         private Timer _timer;
-        private CancellationTokenSource _cts;
 
-        public CourseController(BotUser user,ITelegramBotClient botClient, AppDbContext context)
+        public CourseController(BotUser user, ITelegramBotClient botClient, AppDbContext context)
         {
             _user = user;
             _botClient = botClient;
-            _context = context;
-            _cts = new CancellationTokenSource();
+            _botClient = botClient;
         }
 
         private async void SendTrainingCourseMessage(object state)
         {
-            try
+            string CourseMessage = null;
+
+            if (_user.IsSubscribed && _user.DateStartSubscribe <= DateTime.Now)
             {
-                string courseMessage = null;
-                var user = await _context.BotUsers.FirstOrDefaultAsync(u => u.Id == _user.Id);
-
-                if (user == null || !user.IsSubscribed || user.DateStartSubscribe > DateTime.Now)
-                {
-                    return;
-                }   
-                    
-
-                switch (user.CurrentCourseStep)
+                switch (_user.CurrentCourseStep)
                 {
                     case 1:
-                        courseMessage = "Отправляю первый материал курса";
-                        user.CurrentCourseStep++;
+                        CourseMessage = "Отправляю первый материал курса";
+                        _user.CurrentCourseStep++;
                         break;
                     case 2:
-                        courseMessage = "Отправляю второй материал курса";
-                        user.CurrentCourseStep++;
+                        CourseMessage = "Отправляю второй материал курса";
+                        _user.CurrentCourseStep++;
                         break;
                     case 3:
-                        courseMessage = "Отправляю третий материал курса";
-                        user.CurrentCourseStep++;
+                        CourseMessage = "Отправляю третий материал курса";
+                        _user.CurrentCourseStep++;
                         break;
                     case 4:
-                        courseMessage = "Отправляю четвертый материал курса";
-                        user.CurrentCourseStep++;
+                        CourseMessage = "Отправляю четвертый материал курса";
+                        _user.CurrentCourseStep++;
                         break;
                     case 5:
-                        courseMessage = "Отправляю пятый материал курса";
-                        user.IsSubscribed = false;
+                        CourseMessage = "Отправляю пятый материал курса";
                         StopSendingMaterials();
                         break;
                 }
 
-                if (courseMessage != null)
+                if (CourseMessage != null)
                 {
-                    await _context.SaveChangesAsync(_cts.Token);
-                    await _botClient.SendTextMessageAsync(user.Id, courseMessage);
+                    await _botClient.SendTextMessageAsync(_user.Id, CourseMessage);
                 }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Ошибка в записи на курс: {ex.Message}");
-                StopSendingMaterials();
             }
         }
 
         public void StartSendingMaterials()
         {
-            // Запускаем таймер с интервалом 7 дней (вместо 7 секунд для демонстрации)
-            _timer = new Timer(SendTrainingCourseMessage, null, TimeSpan.Zero, TimeSpan.FromDays(7));
+            // Запускаем таймер с интервалом 7 секунд
+            _timer = new Timer(SendTrainingCourseMessage, null, TimeSpan.Zero, TimeSpan.FromSeconds(7));
         }
 
         public void StopSendingMaterials()
         {
+            // Останавливаем таймер
             _timer?.Change(Timeout.Infinite, 0);
-            _cts.Cancel();
-        }
-
-        public void Dispose()
-        {
-            _timer?.Dispose();
-            _cts?.Dispose();
-            _context?.Dispose();
         }
     }
 }
