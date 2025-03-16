@@ -4,7 +4,9 @@ using Telegram.Bot.Polling;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot;
 using HRProBot.Models;
-using Microsoft.EntityFrameworkCore;
+using LinqToDB;
+using System.Linq.Expressions;
+using static LinqToDB.Common.Configuration;
 
 namespace HRProBot.Controllers
 {
@@ -13,17 +15,15 @@ namespace HRProBot.Controllers
         private readonly ILogger<HomeController> _logger;
         private static string _tlgBotToken;
         private static ITelegramBotClient _botClient;
-        private readonly AppDbContext _dbContext;
+        private static string _dbConnection;
         public BotController(IOptionsSnapshot<AppSettings> appSettings)
         {
 
             _tlgBotToken = appSettings.Value.TlgBotToken;
             _botClient = new TelegramBotClient(_tlgBotToken);
-            //контекст БД
-            var dbOptions = new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(appSettings.Value.DBConnection).Options;
-            _dbContext = new AppDbContext(dbOptions, appSettings);
+            _dbConnection = appSettings.Value.DBConnection;
             var cts = new CancellationTokenSource(); // прерыватель соединения с ботом
-            var updateHandler = new UpdateHandler(appSettings, _botClient, context: _dbContext);
+            var updateHandler = new UpdateHandler(appSettings, _botClient, _dbConnection);            
 
 
             _botClient.StartReceiving(updateHandler.HandleUpdateAsync,

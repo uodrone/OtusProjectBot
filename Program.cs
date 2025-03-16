@@ -1,6 +1,5 @@
 using HRProBot.Models;
 using HRProBot.Controllers;
-using Microsoft.EntityFrameworkCore;
 
 namespace HRProBot
 {
@@ -12,10 +11,6 @@ namespace HRProBot
 
             // Регистрируем AppSettings как конфигурацию
             builder.Services.Configure<AppSettings>(builder.Configuration.GetSection("AppSettings"));
-
-            // Добавляем DbContext в контейнер зависимостей
-            builder.Services.AddDbContext<AppDbContext>(options =>
-                options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
             // Add services to the container.
             builder.Services.AddControllersWithViews();
