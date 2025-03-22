@@ -517,6 +517,9 @@ namespace HRProBot.Controllers
                 range.Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightBlue);
             }
 
+            // Включаем фильтры для первой строки
+            worksheet.Cells[1, 1, 1, 11].AutoFilter = true;
+
             using (var db = new LinqToDB.Data.DataConnection(ProviderName.PostgreSQL, _dbConnection))
             {
                 // Получаем всех пользователей
@@ -553,12 +556,20 @@ namespace HRProBot.Controllers
                     worksheet.Cells[row, 9].Value = user.IsSubscribed ? "Yes" : "No";
                     worksheet.Cells[row, 10].Value = user.DateStartSubscribe?.ToString("dd.MM.yyyy");
                     worksheet.Cells[row, 11].Value = user.CurrentCourseStep;
+
+                    // Включаем перенос текста для ячеек с вопросами и ответами
+                    worksheet.Cells[row, 7].Style.WrapText = true; // Вопросы
+                    worksheet.Cells[row, 8].Style.WrapText = true; // Ответы
+
                     row++;
                 }
             }
 
-            // Авто-ширина для всех колонок
+            // Авто-ширина для колонок
             worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
+            // Устанавливаем максимальную ширину столбцов вопросов и ответов
+            worksheet.Column(7).Width = 100; // Вопросы
+            worksheet.Column(8).Width = 100; // Ответы
 
             var stream = new MemoryStream();
             package.SaveAs(stream);
