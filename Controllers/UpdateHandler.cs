@@ -22,6 +22,7 @@ namespace HRProBot.Controllers
         private static IList<IList<object>> _botMessagesData;
         private static string _dbConnection;
         private static BotUser _user;
+        private static AppDBUpdate _appDbUpdate = new AppDBUpdate();
 
         public UpdateHandler(IOptionsSnapshot<AppSettings> appSettings, ITelegramBotClient botClient, string dbConnection)
         {
@@ -98,6 +99,7 @@ namespace HRProBot.Controllers
                         if (_user.DataCollectStep == 6)
                         {
                             _user.DataCollectStep = 5;
+                            _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                         }
                         
                         await GetUserData(update, cancellationToken);
@@ -203,8 +205,7 @@ namespace HRProBot.Controllers
             {
                 _user.IsSubscribed = true;
                 _user.DateStartSubscribe = date;
-                var AppDbUpdate = new AppDBUpdate();
-                AppDbUpdate.UserDbUpdate(_user, _dbConnection);
+                _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                 await SendMessage(chatId, cancellationToken, Message, Buttons);
                 var courseController = new CourseController(_user, _botClient, _dbConnection);
                 courseController.StartSendingMaterials();
@@ -364,7 +365,6 @@ namespace HRProBot.Controllers
 
         private static async Task GetUserData(Update update, CancellationToken cancellationToken)
         {
-            var AppDbUpdate = new AppDBUpdate();
             long ChatId = update.Message.Chat.Id;
             var regular = new RegularValidation();
             var Buttons = new ReplyKeyboardMarkup(
@@ -380,21 +380,21 @@ namespace HRProBot.Controllers
                     {
                         await HandleStartCommand(ChatId, cancellationToken);
                         _user.DataCollectStep = 0;
-                        AppDbUpdate.UserDbUpdate(_user, _dbConnection);
+                        _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                         return;
                     }
 
                     await SendMessage(ChatId, cancellationToken, "Наш эксперт ответит на ваш вопрос в течение 3 рабочих дней. Чтобы сформировать обращение мы должны знать ваши данные.", null);
                     await SendMessage(ChatId, cancellationToken, "Пожалуйста, введите ваше имя:", Buttons);
                     _user.DataCollectStep = 1;
-                    AppDbUpdate.UserDbUpdate(_user, _dbConnection);
+                    _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                     break;
                 case 1:
                     if (update.Message.Text == "🚩 К началу" || update.Message.Text == "/start")
                     {
                         await HandleStartCommand(ChatId, cancellationToken);
                         _user.DataCollectStep = 0;
-                        AppDbUpdate.UserDbUpdate(_user, _dbConnection);
+                        _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                         return;
                     }
                     else if (regular.ValidateName(update.Message.Text))
@@ -402,7 +402,7 @@ namespace HRProBot.Controllers
                         _user.FirstName = update.Message.Text;
                         await SendMessage(ChatId, cancellationToken, "Пожалуйста, введите вашу фамилию:", Buttons);
                         _user.DataCollectStep = 2;
-                        AppDbUpdate.UserDbUpdate(_user, _dbConnection);
+                        _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                     }
                     else
                     {
@@ -414,7 +414,7 @@ namespace HRProBot.Controllers
                     {
                         await HandleStartCommand(ChatId, cancellationToken);
                         _user.DataCollectStep = 0;
-                        AppDbUpdate.UserDbUpdate(_user, _dbConnection);
+                        _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                         return;
                     }
                     else if (!string.IsNullOrEmpty(update.Message.Text))
@@ -422,7 +422,7 @@ namespace HRProBot.Controllers
                         _user.LastName = update.Message.Text;
                         await SendMessage(ChatId, cancellationToken, "Пожалуйста, введите вашу организацию:", Buttons);
                         _user.DataCollectStep = 3;
-                        AppDbUpdate.UserDbUpdate(_user, _dbConnection);
+                        _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                     }
                     else
                     {
@@ -434,7 +434,7 @@ namespace HRProBot.Controllers
                     {
                         await HandleStartCommand(ChatId, cancellationToken);
                         _user.DataCollectStep = 0;
-                        AppDbUpdate.UserDbUpdate(_user, _dbConnection);
+                        _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                         return;
                     }
                     else if (regular.ValidateOrganization(update.Message.Text))
@@ -442,7 +442,7 @@ namespace HRProBot.Controllers
                         _user.Organization = update.Message.Text;
                         await SendMessage(ChatId, cancellationToken, "Пожалуйста, введите ваш телефон:", Buttons);
                         _user.DataCollectStep = 4;
-                        AppDbUpdate.UserDbUpdate(_user, _dbConnection);
+                        _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                     }
                     else
                     {
@@ -454,7 +454,7 @@ namespace HRProBot.Controllers
                     {
                         await HandleStartCommand(ChatId, cancellationToken);
                         _user.DataCollectStep = 0;
-                        AppDbUpdate.UserDbUpdate(_user, _dbConnection);
+                        _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                         return;
                     }
                     else if (regular.ValidatePhone(update.Message.Text))
@@ -465,7 +465,7 @@ namespace HRProBot.Controllers
                             $"Имя: {_user.FirstName}\nФамилия: {_user.LastName}\nОрганизация: {_user.Organization}\nТелефон: {_user.Phone}\nId пользователя: {_user.Id}", null);
                         await SendMessage(ChatId, cancellationToken, "Пожалуйста, введите ваш запрос:", Buttons);
                         _user.DataCollectStep = 5;
-                        AppDbUpdate.UserDbUpdate(_user, _dbConnection);
+                        _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                     }
                     else
                     {
@@ -478,7 +478,7 @@ namespace HRProBot.Controllers
                     {
                         await HandleStartCommand(ChatId, cancellationToken);
                         _user.DataCollectStep = 0;
-                        AppDbUpdate.UserDbUpdate(_user, _dbConnection);
+                        _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                         return;
                     }
                     else if (!string.IsNullOrEmpty(update.Message.Text))
@@ -508,7 +508,7 @@ namespace HRProBot.Controllers
                         Buttons.ResizeKeyboard = true;
                         await SendMessage(ChatId, cancellationToken, $"Спасибо, ваш вопрос получен:\n{question.QuestionText}", Buttons);
                         _user.DataCollectStep = 6;
-                        AppDbUpdate.UserDbUpdate(_user, _dbConnection);
+                        _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                     }
                     else
                     {
