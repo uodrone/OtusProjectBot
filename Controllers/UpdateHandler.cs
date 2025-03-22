@@ -23,6 +23,8 @@ namespace HRProBot.Controllers
         private static string _dbConnection;
         private static BotUser _user;
         private static AppDBUpdate _appDbUpdate = new AppDBUpdate();
+        private static long _answerUserId;
+        private static bool _answerFlag;
 
         public UpdateHandler(IOptionsSnapshot<AppSettings> appSettings, ITelegramBotClient botClient, string dbConnection)
         {
@@ -72,6 +74,12 @@ namespace HRProBot.Controllers
                 if (_user.DataCollectStep > 0 && _user.DataCollectStep < 6)
                 {
                     await GetUserData(update, cancellationToken);
+                    return;
+                }
+
+                if (_answerFlag)
+                {
+                    await AnswerToUser(update, cancellationToken);
                     return;
                 }
 
@@ -131,6 +139,7 @@ namespace HRProBot.Controllers
                         if (IsBotAdministrator(UserParams))
                         {
                             await SendMessage(ChatId, cancellationToken, "Введите id пользователя, которому вы хотите ответить", null);
+                            await AnswerToUser(update, cancellationToken);
                         }
                         break;
                     default:
@@ -584,6 +593,71 @@ namespace HRProBot.Controllers
             package.SaveAs(stream);
             stream.Position = 0;
             return stream;
+        }
+
+        private static async Task AnswerToUser(Update update, CancellationToken cancellationToken)
+        {
+            long ChatId = update.Message.Chat.Id;
+            var regular = new RegularValidation();
+            var Buttons = new ReplyKeyboardMarkup(
+                            new[] {
+                    new KeyboardButton("🚩 К началу")
+                            });
+            Buttons.ResizeKeyboard = true;
+
+            if (update.Message.Text == "🚩 К началу" || update.Message.Text == "/start")
+            {
+                await HandleStartCommand(ChatId, cancellationToken);
+                return;
+            }
+            else if (update.Message.Text == "/answer")
+            {
+                _answerFlag = true;
+                return;
+            }
+
+            long userId = 0; // Объявляем переменную userId здесь
+
+            if (_answerUserId == 0)
+            {
+                if (long.TryParse(update.Message.Text, out userId)) // Инициализируем userId здесь
+                {
+                    using (var db = new LinqToDB.Data.DataConnection(ProviderName.PostgreSQL, _dbConnection))
+                    {
+                        var userExists = db.GetTable<BotUser>().Any(u => u.Id == userId);
+
+                        if (userExists)
+                        {
+                            _answerUserId = userId;
+                            await SendMessage(ChatId, cancellationToken, "Введите ответ пользователю", Buttons);
+                            //new UserAnswer { BotUserId = userId, AnswerText = update.Message.Text };
+                        }
+                        else
+                        {
+                            await SendMessage(ChatId, cancellationToken, "Пользователь не найден в базе данных", Buttons);
+                            _answerFlag = false;
+                            return;
+                        }
+                    }
+                }
+                else
+                {
+                    // Используем ChatId вместо userId, так как userId не был инициализирован
+                    await SendMessage(ChatId, cancellationToken, "Неверный id пользователя, введите id из отчета", Buttons);
+                    _answerFlag = false;
+                    return;
+                }
+            }
+            else
+            {
+                if (!string.IsNullOrEmpty(update.Message.Text))
+                {
+                    await SendMessage(_answerUserId, cancellationToken, update.Message.Text, Buttons);
+                    // Обнуляем параметр userId для ответа пользователю
+                    _answerUserId = 0;
+                    _answerFlag = false;
+                }
+            }
         }
     }
 }
