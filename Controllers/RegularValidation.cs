@@ -27,9 +27,7 @@ namespace HRProBot.Controllers
         public bool ValidatePhone(string phone)
         {
             // Регулярное выражение для телефона:
-            // - Формат +7XXXXXXXXXX или 8XXXXXXXXXX (X - цифры)
-            // - Длина 11 символов
-            string pattern = @"^(\+7|8)\d{10}$";
+            string pattern = @"^(\+?(\d{1,3})[-\s]?)?(\d{1,4}[-\s]?){2,}\d{1,4}$";
             return Regex.IsMatch(phone, pattern);
         }
     }
