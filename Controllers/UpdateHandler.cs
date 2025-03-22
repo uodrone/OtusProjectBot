@@ -26,9 +26,8 @@ namespace HRProBot.Controllers
         private static AppDBUpdate _appDbUpdate = new AppDBUpdate();
         private static long _answerUserId;
         private static bool _answerFlag;
-        // Кэш для хранения медиагрупп
-        private static readonly ConcurrentDictionary<string, List<(long ChatId, string FileId)>> _mediaGroupCache =
-            new ConcurrentDictionary<string, List<(long ChatId, string FileId)>>();
+
+        private static readonly ConcurrentDictionary<string, MediaGroup> _mediaGroups = new ConcurrentDictionary<string, MediaGroup>();
 
         public UpdateHandler(IOptionsSnapshot<AppSettings> appSettings, ITelegramBotClient botClient, string dbConnection)
         {
@@ -94,7 +93,44 @@ namespace HRProBot.Controllers
             // Обработка медиагрупп
             if (!string.IsNullOrEmpty(update.Message.MediaGroupId))
             {
-                await HandleMediaGroup(update, cancellationToken);
+                var mediaGroupId = update.Message.MediaGroupId;
+                var photoFileId = update.Message.Photo.Last().FileId;
+
+                // Получаем или создаем экземпляр MediaGroup
+                var mediaGroup = _mediaGroups.GetOrAdd(mediaGroupId, id => new MediaGroup(id));
+
+                // Добавляем файл в медиагруппу
+                mediaGroup.AddFile(update.Message.Chat.Id, photoFileId);
+
+                // Если есть текст сообщения, сохраняем его в медиагруппе
+                if (!string.IsNullOrEmpty(update.Message.Caption))
+                {
+                    mediaGroup.Caption = update.Message.Caption;
+                }
+
+                // Если медиагруппа еще не обрабатывается, запускаем фоновую задачу
+                if (!mediaGroup.IsProcessing)
+                {
+                    mediaGroup.IsProcessing = true;
+
+                    _ = Task.Run(async () =>
+                    {
+                        while (true)
+                        {
+                            await Task.Delay(100); // Проверяем каждые 100 мс
+
+                            // Если медиагруппа завершена, отправляем её
+                            if (mediaGroup.IsComplete())
+                            {
+                                await HandleMediaGroup(botClient, mediaGroup, cancellationToken);
+
+                                // Удаляем медиагруппу из словаря после отправки
+                                _mediaGroups.TryRemove(mediaGroupId, out _);
+                                break;
+                            }
+                        }
+                    }, cancellationToken);
+                }
                 return;
             }
 
@@ -120,39 +156,21 @@ namespace HRProBot.Controllers
         /// <summary>
         /// Обработка медиагрупп
         /// </summary>
-        private async Task HandleMediaGroup(Update update, CancellationToken cancellationToken)
+        private static async Task HandleMediaGroup(ITelegramBotClient botClient, MediaGroup mediaGroup, CancellationToken cancellationToken)
         {
-            var mediaGroupId = update.Message.MediaGroupId;
-            var photoFileId = update.Message.Photo.Last().FileId;
-
-            // Добавляем фотографию в кэш
-            _mediaGroupCache.AddOrUpdate(
-                mediaGroupId,
-                new List<(long ChatId, string FileId)> { (update.Message.Chat.Id, photoFileId) },
-                (key, existingList) =>
+            // Формируем медиагруппу для отправки
+            var mediaGroupToSend = mediaGroup.Files
+                .Select((item, index) => new InputMediaPhoto(item.FileId)
                 {
-                    existingList.Add((update.Message.Chat.Id, photoFileId));
-                    return existingList;
-                });
+                    Caption = index == 0 ? mediaGroup.Caption : null // Текст только для первой фотографии
+                })
+                .ToList();
 
-            // Если это последнее сообщение в медиагруппе, отправляем все фотографии
-            if (_mediaGroupCache.TryGetValue(mediaGroupId, out var mediaGroupList))
-            {
-                var mediaGroup = mediaGroupList
-                    .Select((item, index) => new InputMediaPhoto(item.FileId)
-                    {
-                        Caption = index == 0 ? "Ваши фотографии:" : null // Текст только для первой фотографии
-                    })
-                    .ToList();
-
-                await _botClient.SendMediaGroupAsync(
-                    chatId: update.Message.Chat.Id,
-                    media: mediaGroup,
-                    cancellationToken: cancellationToken);
-
-                // Очищаем кэш для этой медиагруппы
-                _mediaGroupCache.TryRemove(mediaGroupId, out _);
-            }
+            // Отправляем медиагруппу
+            await botClient.SendMediaGroupAsync(
+                chatId: mediaGroup.Files.First().ChatId,
+                media: mediaGroupToSend,
+                cancellationToken: cancellationToken);
         }
 
         /// <summary>
@@ -579,14 +597,14 @@ namespace HRProBot.Controllers
 
         private static async Task AnswerToUser(Update update, CancellationToken cancellationToken)
         {
-            long ChatId = update.Message.Chat.Id;
-            var Buttons = new ReplyKeyboardMarkup(new[] { new KeyboardButton("🚩 К началу") });
-            Buttons.ResizeKeyboard = true;
+            long chatId = update.Message.Chat.Id;
+            var buttons = new ReplyKeyboardMarkup(new[] { new KeyboardButton("🚩 К началу") });
+            buttons.ResizeKeyboard = true;
 
             // Если пользователь нажал "🚩 К началу" или отправил команду /start
             if (update.Message.Text == "🚩 К началу" || update.Message.Text == "/start")
             {
-                await HandleStartCommand(ChatId, cancellationToken);
+                await HandleStartCommand(chatId, cancellationToken);
                 return;
             }
 
@@ -594,11 +612,11 @@ namespace HRProBot.Controllers
             if (update.Message.Text == "/answer")
             {
                 _answerFlag = true;
-                await SendMessage(ChatId, cancellationToken, "Введите ID пользователя, которому вы хотите ответить:", Buttons);
+                await SendMessage(chatId, cancellationToken, "Введите ID пользователя, которому вы хотите ответить:", buttons);
                 return;
             }
 
-            // Если _answerUserId ещё не установлен, ожидаем ввода ID пользователя
+            // Если _answerUserId (пользователя, которому отвечаем) ещё не установлен, ожидаем ввода ID пользователя
             if (_answerUserId == 0)
             {
                 if (long.TryParse(update.Message.Text, out long userId))
@@ -610,18 +628,18 @@ namespace HRProBot.Controllers
                         if (userExists)
                         {
                             _answerUserId = userId;
-                            await SendMessage(ChatId, cancellationToken, "Введите ответ пользователю (текст + фото/видео, если нужно):", Buttons);
+                            await SendMessage(chatId, cancellationToken, "Введите ответ пользователю (текст + фото/видео, если нужно):", buttons);
                         }
                         else
                         {
-                            await SendMessage(ChatId, cancellationToken, "Пользователь не найден в базе данных", Buttons);
+                            await SendMessage(chatId, cancellationToken, "Пользователь не найден в базе данных", buttons);
                             _answerFlag = false;
                         }
                     }
                 }
                 else
                 {
-                    await SendMessage(ChatId, cancellationToken, "Неверный ID пользователя. Введите ID из отчёта.", Buttons);
+                    await SendMessage(chatId, cancellationToken, "Неверный ID пользователя. Введите ID из отчёта.", buttons);
                     _answerFlag = false;
                 }
             }
@@ -632,78 +650,92 @@ namespace HRProBot.Controllers
 
                 if (string.IsNullOrEmpty(answerText))
                 {
-                    await SendMessage(ChatId, cancellationToken, "Ответ должен содержать текст.", Buttons);
+                    await SendMessage(chatId, cancellationToken, "Ответ должен содержать текст.", buttons);
                     return;
                 }
 
                 // Сохраняем текст ответа в базу данных
                 await SaveAnswerToDatabase(_answerUserId, answerText);
 
-                // Отправляем текст и медиафайлы
-                if (update.Message.Type == MessageType.Photo)
+                // Если это медиагруппа, создаём экземпляр MediaGroup и добавляем файлы
+                if (!string.IsNullOrEmpty(update.Message.MediaGroupId))
                 {
-                    // Получаем последнюю фотографию (самую большую)
-                    var photoFileId = update.Message.Photo.Last().FileId;
+                    var mediaGroupId = update.Message.MediaGroupId;
 
-                    // Если это медиагруппа, используем _mediaGroupCache
-                    if (!string.IsNullOrEmpty(update.Message.MediaGroupId))
+                    // Получаем или создаем экземпляр MediaGroup
+                    var mediaGroup = _mediaGroups.GetOrAdd(mediaGroupId, id => new MediaGroup(id));
+
+                    // Устанавливаем текст сообщения (подпись)
+                    mediaGroup.Caption = answerText;
+
+                    // Добавляем файл в медиагруппу
+                    if (update.Message.Type == MessageType.Photo)
                     {
-                        // Добавляем фотографию в кэш
-                        _mediaGroupCache.AddOrUpdate(
-                            update.Message.MediaGroupId,
-                            new List<(long ChatId, string FileId)> { (update.Message.Chat.Id, photoFileId) },
-                            (key, existingList) =>
-                            {
-                                existingList.Add((update.Message.Chat.Id, photoFileId));
-                                return existingList;
-                            });
+                        var photoFileId = update.Message.Photo.Last().FileId;
+                        mediaGroup.AddFile(update.Message.Chat.Id, photoFileId);
+                    }
+                    else if (update.Message.Type == MessageType.Video)
+                    {
+                        var videoFileId = update.Message.Video.FileId;
+                        mediaGroup.AddFile(update.Message.Chat.Id, videoFileId);
+                    }
 
-                        // Если это последнее сообщение в медиагруппе, отправляем все фотографии
-                        if (_mediaGroupCache.TryGetValue(update.Message.MediaGroupId, out var mediaGroupList))
+                    // Если медиагруппа еще не обрабатывается, запускаем фоновую задачу
+                    if (!mediaGroup.IsProcessing)
+                    {
+                        mediaGroup.IsProcessing = true;
+
+                        _ = Task.Run(async () =>
                         {
-                            var mediaGroup = mediaGroupList
-                                .Select((item, index) => new InputMediaPhoto(item.FileId)
+                            while (true)
+                            {
+                                await Task.Delay(100); // Проверяем каждые 100 мс
+
+                                // Если медиагруппа завершена, отправляем её
+                                if (mediaGroup.IsComplete())
                                 {
-                                    Caption = index == 0 ? answerText : null // Текст только для первой фотографии
-                                })
-                                .ToList();
+                                    await HandleMediaGroup(_botClient, mediaGroup, cancellationToken);
 
-                            await _botClient.SendMediaGroupAsync(
-                                chatId: _answerUserId,
-                                media: mediaGroup,
-                                cancellationToken: cancellationToken);
-
-                            // Очищаем кэш для этой медиагруппы
-                            _mediaGroupCache.TryRemove(update.Message.MediaGroupId, out _);
-                        }
+                                    // Удаляем медиагруппу из словаря после отправки
+                                    _mediaGroups.TryRemove(mediaGroupId, out _);
+                                    break;
+                                }
+                            }
+                        }, cancellationToken);
                     }
-                    else
-                    {
-                        // Если это одиночная фотография, отправляем её отдельно
-                        await SendPhotoWithCaption(_answerUserId, cancellationToken, photoFileId, answerText, Buttons);
-                    }
-                }
-                else if (update.Message.Type == MessageType.Video)
-                {
-                    // Одно видео с текстом
-                    await SendVideoWithCaption(_answerUserId, cancellationToken, update.Message.Video.FileId, answerText, Buttons);
-                }
-                else if (update.Message.Type == MessageType.VideoNote)
-                {
-                    // Видеосообщение (кружок) с текстом
-                    await SendVideoNote(_answerUserId, cancellationToken, update.Message.VideoNote.FileId);
-                    await SendMessage(_answerUserId, cancellationToken, answerText, Buttons); // Отправляем текст отдельно
                 }
                 else
                 {
-                    // Только текст
-                    await SendMessage(_answerUserId, cancellationToken, answerText, Buttons);
+                    // Если это одиночное сообщение (текст, фото, видео и т.д.)
+                    if (update.Message.Type == MessageType.Photo)
+                    {
+                        // Отправляем фото с текстом
+                        var photoFileId = update.Message.Photo.Last().FileId;
+                        await SendPhotoWithCaption(_answerUserId, cancellationToken, photoFileId, answerText, buttons);
+                    }
+                    else if (update.Message.Type == MessageType.Video)
+                    {
+                        // Отправляем видео с текстом
+                        var videoFileId = update.Message.Video.FileId;
+                        await SendVideoWithCaption(_answerUserId, cancellationToken, videoFileId, answerText, buttons);
+                    }
+                    else if (update.Message.Type == MessageType.VideoNote)
+                    {
+                        // Отправляем видеосообщение (кружок)
+                        await SendVideoNote(_answerUserId, cancellationToken, update.Message.VideoNote.FileId);
+                        await SendMessage(_answerUserId, cancellationToken, answerText, buttons); // Отправляем текст отдельно
+                    }
+                    else
+                    {
+                        // Отправляем только текст
+                        await SendMessage(_answerUserId, cancellationToken, answerText, buttons);
+                    }
                 }
 
                 // Сбрасываем состояние
                 _answerUserId = 0;
                 _answerFlag = false;
-                await SendMessage(ChatId, cancellationToken, "Ответ отправлен пользователю.", Buttons);
+                await SendMessage(chatId, cancellationToken, "Ответ отправлен пользователю.", buttons);
             }
         }
 
