@@ -542,12 +542,13 @@ namespace HRProBot.Controllers
             worksheet.Cells[1, 5].Value = "Организация";
             worksheet.Cells[1, 6].Value = "Телефон";
             worksheet.Cells[1, 7].Value = "Вопросы";
-            worksheet.Cells[1, 8].Value = "Подписан на курс?";
-            worksheet.Cells[1, 9].Value = "Дата подписки на курс";
-            worksheet.Cells[1, 10].Value = "Этап отправки курсов";
+            worksheet.Cells[1, 8].Value = "Ответы";
+            worksheet.Cells[1, 9].Value = "Подписан на курс?";
+            worksheet.Cells[1, 10].Value = "Дата подписки на курс";
+            worksheet.Cells[1, 11].Value = "Этап отправки курсов";
 
             // Стиль для заголовков
-            using (var range = worksheet.Cells[1, 1, 1, 10])
+            using (var range = worksheet.Cells[1, 1, 1, 11])
             {
                 range.Style.Font.Bold = true;
                 range.Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
@@ -560,6 +561,8 @@ namespace HRProBot.Controllers
                 var allUsers = db.GetTable<BotUser>().ToList();
                 // Получаем все вопросы
                 var allQuestions = db.GetTable<UserQuestion>().ToList();
+                // Получаем все ответы
+                var allAnswers = db.GetTable<UserAnswer>().ToList();
 
                 // Заполнение данных
                 int row = 2;
@@ -578,10 +581,16 @@ namespace HRProBot.Controllers
                         .Select(q => q.QuestionText)
                         .ToList();
                     worksheet.Cells[row, 7].Value = string.Join("; ", userQuestions);
+                    // Получаем ответы пользователя и объединяем их через ";"
+                    var userAnswers = allAnswers
+                        .Where(q => q.BotUserId == user.Id)
+                        .Select(q => q.AnswerText)
+                        .ToList();
+                    worksheet.Cells[row, 8].Value = string.Join("; ", userAnswers);
 
-                    worksheet.Cells[row, 8].Value = user.IsSubscribed ? "Yes" : "No";
-                    worksheet.Cells[row, 9].Value = user.DateStartSubscribe?.ToString("dd.MM.yyyy");
-                    worksheet.Cells[row, 10].Value = user.CurrentCourseStep;
+                    worksheet.Cells[row, 9].Value = user.IsSubscribed ? "Yes" : "No";
+                    worksheet.Cells[row, 10].Value = user.DateStartSubscribe?.ToString("dd.MM.yyyy");
+                    worksheet.Cells[row, 11].Value = user.CurrentCourseStep;
                     row++;
                 }
             }
@@ -629,8 +638,7 @@ namespace HRProBot.Controllers
                         if (userExists)
                         {
                             _answerUserId = userId;
-                            await SendMessage(ChatId, cancellationToken, "Введите ответ пользователю", Buttons);
-                            //new UserAnswer { BotUserId = userId, AnswerText = update.Message.Text };
+                            await SendMessage(ChatId, cancellationToken, "Введите ответ пользователю", Buttons);                            
                         }
                         else
                         {
@@ -652,6 +660,13 @@ namespace HRProBot.Controllers
             {
                 if (!string.IsNullOrEmpty(update.Message.Text))
                 {
+                    using (var db = new LinqToDB.Data.DataConnection(ProviderName.PostgreSQL, _dbConnection))
+                    {
+                        var table = db.GetTable<UserAnswer>();                       
+                        // Вставляем новый ответ в базу данных
+                        db.Insert(new UserAnswer { BotUserId = _answerUserId, AnswerText = update.Message.Text });
+                    }
+
                     await SendMessage(_answerUserId, cancellationToken, update.Message.Text, Buttons);
                     // Обнуляем параметр userId для ответа пользователю
                     _answerUserId = 0;
