@@ -38,10 +38,8 @@ namespace HRProBot.Controllers
             _googleSheets = new GoogleSheetsController(_appSettings);
             _botClient = botClient;
             _dbConnection = dbConnection;
-            var menuRange = _appSettings.Value.GoogleSheetsRange;
-            var mailingRange = _appSettings.Value.GoogleSheetsMailing;
-            _botMessagesData = _googleSheets.GetData(menuRange);
-            _botMailingData = _googleSheets.GetData(mailingRange);
+            _botMessagesData = _googleSheets.GetData(_appSettings.Value.GoogleSheetsRange);
+            _botMailingData = _googleSheets.GetData(_appSettings.Value.GoogleSheetsMailing);
             var cts = new CancellationTokenSource(); // прерыватель соединения с ботом
         }
 
