@@ -1,9 +1,12 @@
 ﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
+using HRProBot.Interfaces;
 using HRProBot.Models;
 using LinqToDB;
+using Microsoft.Extensions.Options;
 using Telegram.Bot;
+using Telegram.Bot.Types;
 
 namespace HRProBot.Controllers
 {
@@ -11,13 +14,19 @@ namespace HRProBot.Controllers
     {
         private BotUser _user;
         private ITelegramBotClient _botClient;
+        private static IOptionsSnapshot<AppSettings> _appSettings;
+        private static GoogleSheetsController _googleSheets;
+        private static IList<IList<object>> _botCourseData;
         private Timer _timer;
         private string _dbConnection;
 
-        public CourseController(BotUser user, ITelegramBotClient botClient, string dbConnection)
+        public CourseController(BotUser user, ITelegramBotClient botClient, IOptionsSnapshot<AppSettings> appSettings, string dbConnection)
         {
             _user = user;
             _botClient = botClient;
+            _appSettings = appSettings;
+            _googleSheets = new GoogleSheetsController(_appSettings);
+            _botCourseData = _googleSheets.GetData(_appSettings.Value.GoogleSheetsCourseRange);
             _dbConnection = dbConnection;
         }
 
@@ -31,27 +40,32 @@ namespace HRProBot.Controllers
                 switch (_user.CurrentCourseStep)
                 {
                     case 1:
-                        CourseMessage = "Отправляю первый материал курса";
+                        CourseMessage = _botCourseData[1][1].ToString();
                         AppDbUpdate.UserDbUpdate(_user, _dbConnection);
                         _user.CurrentCourseStep++;
                         break;
                     case 2:
-                        CourseMessage = "Отправляю второй материал курса";
+                        CourseMessage = _botCourseData[2][1].ToString();
                         AppDbUpdate.UserDbUpdate(_user, _dbConnection);
                         _user.CurrentCourseStep++;
                         break;
                     case 3:
-                        CourseMessage = "Отправляю третий материал курса";
+                        CourseMessage = _botCourseData[3][1].ToString();
                         AppDbUpdate.UserDbUpdate(_user, _dbConnection);
                         _user.CurrentCourseStep++;
                         break;
                     case 4:
-                        CourseMessage = "Отправляю четвертый материал курса";
+                        CourseMessage = _botCourseData[4][1].ToString();
                         AppDbUpdate.UserDbUpdate(_user, _dbConnection);
                         _user.CurrentCourseStep++;
                         break;
                     case 5:
-                        CourseMessage = "Отправляю пятый материал курса";
+                        CourseMessage = _botCourseData[5][1].ToString();
+                        AppDbUpdate.UserDbUpdate(_user, _dbConnection);
+                        _user.CurrentCourseStep++;
+                        break;
+                    case 6:
+                        CourseMessage = _botCourseData[6][1].ToString();
                         AppDbUpdate.UserDbUpdate(_user, _dbConnection);
                         StopSendingMaterials();
                         break;

@@ -11,6 +11,7 @@ using System.IO;
 using LinqToDB.Common;
 using LinqToDB;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using System.Collections.Concurrent;
 
 namespace HRProBot.Controllers
 {
@@ -20,18 +21,27 @@ namespace HRProBot.Controllers
         private static GoogleSheetsController _googleSheets;
         private static ITelegramBotClient _botClient;
         private static IList<IList<object>> _botMessagesData;
+        private static IList<IList<object>> _botMailingData;
         private static string _dbConnection;
         private static BotUser _user;
         private static AppDBUpdate _appDbUpdate = new AppDBUpdate();
+        private static long _answerUserId;
+        private static bool _answerFlag;
+        private static IOptionsSnapshot<AppSettings> _appSettings;
+
+        private static readonly ConcurrentDictionary<string, MediaGroup> _mediaGroups = new ConcurrentDictionary<string, MediaGroup>();
 
         public UpdateHandler(IOptionsSnapshot<AppSettings> appSettings, ITelegramBotClient botClient, string dbConnection)
         {
-            _administrators = appSettings.Value.TlgBotAdministrators.Split(';');
-            _googleSheets = new GoogleSheetsController(appSettings);
+            _appSettings = appSettings;
+            _administrators = _appSettings.Value.TlgBotAdministrators.Split(';');
+            _googleSheets = new GoogleSheetsController(_appSettings);
             _botClient = botClient;
             _dbConnection = dbConnection;
-            var range = appSettings.Value.GoogleSheetsRange;
-            _botMessagesData = _googleSheets.GetData(range);
+            var menuRange = _appSettings.Value.GoogleSheetsRange;
+            var mailingRange = _appSettings.Value.GoogleSheetsMailing;
+            _botMessagesData = _googleSheets.GetData(menuRange);
+            _botMailingData = _googleSheets.GetData(mailingRange);
             var cts = new CancellationTokenSource(); // прерыватель соединения с ботом
         }
 
@@ -42,10 +52,17 @@ namespace HRProBot.Controllers
 
         public async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
         {
+            // Критически важная проверка
+            if (update.Type != UpdateType.Message || update.Message == null || update.Message.From == null)
+            {
+                return; // Игнорируем всё, кроме сообщений, и сообщения без отправителя
+            }
+
             var Me = await botClient.GetMe();
-            var UserParams = update.Message?.From;
-            string? BotName = Me.FirstName; //имя бота            
+            var UserParams = update.Message.From;
+            string? BotName = Me.FirstName; // Имя бота            
             long ChatId = update.Message.Chat.Id;
+
             using (var db = new LinqToDB.Data.DataConnection(ProviderName.PostgreSQL, _dbConnection))
             {
                 var table = db.GetTable<BotUser>();
@@ -57,7 +74,7 @@ namespace HRProBot.Controllers
                     _user = new BotUser
                     {
                         Id = UserParams.Id,
-                        UserName = UserParams.Username                      
+                        UserName = UserParams.Username
                     };
 
                     // Вставляем нового пользователя в базу данных
@@ -65,84 +82,173 @@ namespace HRProBot.Controllers
                 }
             }
 
-
-            if (update.Type == UpdateType.Message && update.Message.Type == MessageType.Text && UserParams != null)
+            // Если начали собирать данные, но они еще не собраны до конца - дособираем
+            if (_user.DataCollectStep > 0 && _user.DataCollectStep < 6)
             {
-                //если начали собирать данные, но они еще не собраны до конца - дособираем
-                if (_user.DataCollectStep > 0 && _user.DataCollectStep < 6)
+                await GetUserData(update, cancellationToken);
+                return;
+            }
+
+            if (_answerFlag)
+            {
+                await AnswerToUser(update, cancellationToken);
+                return;
+            }
+
+            // Обработка медиагрупп
+            if (!string.IsNullOrEmpty(update.Message.MediaGroupId))
+            {
+                var mediaGroupId = update.Message.MediaGroupId;
+                var photoFileId = update.Message.Photo.Last().FileId;
+
+                // Получаем или создаем экземпляр MediaGroup
+                var mediaGroup = _mediaGroups.GetOrAdd(mediaGroupId, id => new MediaGroup(id));
+
+                // Добавляем файл в медиагруппу
+                mediaGroup.AddFile(update.Message.Chat.Id, photoFileId);
+
+                // Если есть текст сообщения, сохраняем его в медиагруппе
+                if (!string.IsNullOrEmpty(update.Message.Caption))
                 {
-                    await GetUserData(update, cancellationToken);
-                    return;
+                    mediaGroup.Caption = update.Message.Caption;
                 }
 
-                // Обработка обычных команд
-                switch (update.Message.Text)
+                // Если медиагруппа еще не обрабатывается, запускаем фоновую задачу
+                if (!mediaGroup.IsProcessing)
                 {
-                    case "🚩 К началу":
-                    case "/start":
-                        await HandleStartCommand(ChatId, cancellationToken);
-                        break;
-                    case "📅 Подписаться на курс":
-                    case "/course":
-                        await HandleCourseCommand(ChatId, cancellationToken);
-                        break;
-                    case "🤵‍♂️ Узнать об экспертах":
-                    case "/experts":
-                        await HandleExpertsCommand(ChatId, cancellationToken);
-                        break;
-                    case "🔍 О системе HR Pro":
-                    case "/hrpro":
-                        await HandleAboutHrProCommand(ChatId, cancellationToken);
-                        break;
-                    case "🙋‍♂️ Задать вопрос эксперту":
-                    case "/ask":
-                        if (_user.DataCollectStep == 6)
+                    mediaGroup.IsProcessing = true;
+
+                    _ = Task.Run(async () =>
+                    {
+                        while (true)
                         {
-                            _user.DataCollectStep = 5;
-                            _appDbUpdate.UserDbUpdate(_user, _dbConnection);
+                            await Task.Delay(100); // Проверяем каждые 100 мс
+
+                            // Если медиагруппа завершена, отправляем её
+                            if (mediaGroup.IsComplete())
+                            {
+                                await HandleMediaGroup(botClient, mediaGroup, cancellationToken);
+
+                                // Удаляем медиагруппу из словаря после отправки
+                                _mediaGroups.TryRemove(mediaGroupId, out _);
+                                break;
+                            }
                         }
-                        
-                        await GetUserData(update, cancellationToken);
-                        break;
-                    case "/mailing":
-                        if (IsBotAdministrator(UserParams))
-                        {
-                            await SendMessage(ChatId, cancellationToken, "Массовая рассылка началась", null);
-                        }
-                        break;
-                    case "/testmailing":
-                        if (IsBotAdministrator(UserParams))
-                        {
-                            await SendMessage(ChatId, cancellationToken, "Отправляю тестовую рассылку", null);
-                        }
-                        break;
-                    case "/report":
-                        if (IsBotAdministrator(UserParams))
-                        {
-                            var reportStream = GenerateUserReport();
-                            await _botClient.SendDocumentAsync(
-                                chatId: ChatId,
-                                document: new InputFileStream(reportStream, "UsersReport.xlsx"),
-                                caption: "Отчет по пользователям",
-                                cancellationToken: cancellationToken);
-                        }
-                        break;
-                    case "/answer":
-                        if (IsBotAdministrator(UserParams))
-                        {
-                            await SendMessage(ChatId, cancellationToken, "Введите id пользователя, которому вы хотите ответить", null);
-                        }
-                        break;
-                    default:
-                        var Buttons = new ReplyKeyboardMarkup(
-                            new[] {
-                                 new KeyboardButton("🚩 К началу")
-                            });
-                        Buttons.ResizeKeyboard = true;
-                        var Message = $"Попробуйте еще раз! Ник: {UserParams.Username}, Имя: {UserParams.FirstName}, id: {UserParams.Id} ";
-                        await SendMessage(ChatId, cancellationToken, Message, Buttons);                        
-                        break;
+                    }, cancellationToken);
                 }
+                return;
+            }
+
+            // Обработка текстовых команд
+            if (update.Message.Type == MessageType.Text)
+            {
+                await HandleTextCommands(update, cancellationToken);
+            }
+            else
+            {
+                // Обработка медиафайлов (фото, видео и т.д.)
+                if (_answerFlag)
+                {
+                    await AnswerToUser(update, cancellationToken);
+                }
+                else
+                {
+                    await SendMessage(ChatId, cancellationToken, "Неподдерживаемый тип сообщения. Используйте текстовые команды.", null);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Обработка медиагрупп
+        /// </summary>
+        private static async Task HandleMediaGroup(ITelegramBotClient botClient, MediaGroup mediaGroup, CancellationToken cancellationToken)
+        {
+            // Формируем медиагруппу для отправки
+            var mediaGroupToSend = mediaGroup.Files
+                .Select((item, index) => new InputMediaPhoto(item.FileId)
+                {
+                    Caption = index == 0 ? mediaGroup.Caption : null // Текст только для первой фотографии
+                })
+                .ToList();
+
+            // Отправляем медиагруппу
+            await botClient.SendMediaGroupAsync(
+                chatId: mediaGroup.Files.First().ChatId,
+                media: mediaGroupToSend,
+                cancellationToken: cancellationToken);
+        }
+
+        /// <summary>
+        /// Обработка текстовых команд
+        /// </summary>
+        private async Task HandleTextCommands(Update update, CancellationToken cancellationToken)
+        {
+            long ChatId = update.Message.Chat.Id;
+
+            switch (update.Message.Text)
+            {
+                case "🚩 К началу":
+                case "/start":
+                    await HandleStartCommand(ChatId, cancellationToken);
+                    break;
+                case "📅 Подписаться на курс":
+                case "/course":
+                    await HandleCourseCommand(ChatId, cancellationToken);
+                    break;
+                case "🤵‍♂️ Узнать об экспертах":
+                case "/experts":
+                    await HandleExpertsCommand(ChatId, cancellationToken);
+                    break;
+                case "🔍 О системе HR Pro":
+                case "/hrpro":
+                    await HandleAboutHrProCommand(ChatId, cancellationToken);
+                    break;
+                case "🙋‍♂️ Задать вопрос эксперту":
+                case "/ask":
+                    if (_user.DataCollectStep == 6)
+                    {
+                        _user.DataCollectStep = 5;
+                        _appDbUpdate.UserDbUpdate(_user, _dbConnection);
+                    }
+
+                    await GetUserData(update, cancellationToken);
+                    break;
+                case "/mailing":
+                    if (IsBotAdministrator(update.Message.From))
+                    {
+                        await SendMessage(ChatId, cancellationToken, "Массовая рассылка началась", null);
+                    }
+                    break;
+                case "/testmailing":
+                    if (IsBotAdministrator(update.Message.From))
+                    {
+                        await SendMessage(ChatId, cancellationToken, "Отправляю тестовую рассылку", null);
+                    }
+                    break;
+                case "/report":
+                    if (IsBotAdministrator(update.Message.From))
+                    {
+                        var reportStream = GenerateUserReport();
+                        await _botClient.SendDocumentAsync(
+                            chatId: ChatId,
+                            document: new InputFileStream(reportStream, "UsersReport.xlsx"),
+                            caption: "Отчет по пользователям",
+                            cancellationToken: cancellationToken);
+                    }
+                    break;
+                case "/answer":
+                    if (IsBotAdministrator(update.Message.From))
+                    {
+                        await SendMessage(ChatId, cancellationToken, "Введите id пользователя, которому вы хотите ответить", null);
+                        _answerFlag = true;
+                    }
+                    break;
+                default:
+                    var Buttons = new ReplyKeyboardMarkup(new[] { new KeyboardButton("🚩 К началу") });
+                    Buttons.ResizeKeyboard = true;
+                    var Message = $"Попробуйте еще раз! Ник: {update.Message.From.Username}, Имя: {update.Message.From.FirstName}, id: {update.Message.From.Id} ";
+                    await SendMessage(ChatId, cancellationToken, Message, Buttons);
+                    break;
             }
         }
 
@@ -161,6 +267,7 @@ namespace HRProBot.Controllers
 
             return IsUserAdmin;
         }
+
         /// <summary>
         /// Обработчик стартовой команды
         /// </summary>
@@ -207,7 +314,7 @@ namespace HRProBot.Controllers
                 _user.DateStartSubscribe = date;
                 _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                 await SendMessage(chatId, cancellationToken, Message, Buttons);
-                var courseController = new CourseController(_user, _botClient, _dbConnection);
+                var courseController = new CourseController(_user, _botClient, _appSettings, _dbConnection);
                 courseController.StartSendingMaterials();
             }
             else
@@ -247,122 +354,9 @@ namespace HRProBot.Controllers
                 });
             Buttons.ResizeKeyboard = true;
             string imageUrl = "https://www.directum.ru/application/images/hr-pro_logo_vertical.png";
-            await SendMessage(chatId, cancellationToken, imageUrl, Message, Buttons);
+            await SendPhotoWithCaption(chatId, cancellationToken, imageUrl, Message, Buttons);
         }
-
-        /// <summary>
-        /// Отправка текста
-        /// </summary>
-        /// <param name="chatId"></param>
-        /// <param name="cancellationToken"></param>
-        /// <param name="textMessage"></param>
-        /// <param name="buttons"></param>
-        /// <returns></returns>
-        static async Task SendMessage(long chatId, CancellationToken cancellationToken, string textMessage, ReplyKeyboardMarkup? buttons)
-        {
-            ReplyKeyboardRemove removeKeyboard = new ReplyKeyboardRemove();
-
-            if (buttons == null)
-            {
-                await _botClient.SendTextMessageAsync(
-                chatId: chatId,
-                text: textMessage,
-                replyMarkup: removeKeyboard,
-                cancellationToken: cancellationToken);
-            }
-            else
-            {
-                await _botClient.SendTextMessageAsync(
-                chatId: chatId,
-                text: textMessage,
-                replyMarkup: buttons,
-                cancellationToken: cancellationToken);
-            }
-        }
-        /// <summary>
-        /// Отправка фотки с текстом
-        /// </summary>
-        /// <param name="chatId"></param>
-        /// <param name="cancellationToken"></param>
-        /// <param name="imageUrl"></param>
-        /// <param name="textMessage"></param>
-        /// <param name="buttons"></param>
-        /// <returns></returns>
-        static async Task SendMessage(long chatId, CancellationToken cancellationToken, string imageUrl, string textMessage, ReplyKeyboardMarkup? buttons)
-        {
-            await _botClient.SendPhotoAsync(
-            chatId: chatId,
-            imageUrl,
-            caption: textMessage,
-            replyMarkup: buttons,
-            cancellationToken: cancellationToken);
-        }
-        /// <summary>
-        /// Отправка видосика с текстом
-        /// </summary>
-        /// <param name="chatId"></param>
-        /// <param name="cancellationToken"></param>
-        /// <param name="imageUrl"></param>
-        /// <param name="textMessage"></param>
-        /// <param name="buttons"></param>
-        /// <returns></returns>
-        static async Task SendMessage(long chatId, CancellationToken cancellationToken, string videoUrl, bool isVideo, string textMessage, ReplyKeyboardMarkup? buttons)
-        {
-            await _botClient.SendVideoAsync(
-            chatId: chatId,
-            videoUrl,
-            caption: textMessage,
-            replyMarkup: buttons,
-            cancellationToken: cancellationToken);
-        }
-        /// <summary>
-        /// Отправка галереи фоток
-        /// </summary>
-        /// <param name="chatId"></param>
-        /// <param name="cancellationToken"></param>
-        /// <param name="images"></param>
-        /// <returns></returns>
-        static async Task SendMessage(long chatId, CancellationToken cancellationToken, List<InputMediaPhoto> images)
-        {
-            await _botClient.SendMediaGroupAsync(
-            chatId: chatId,
-            images,
-            cancellationToken: cancellationToken);
-        }
-        /// <summary>
-        /// Отправка галереи видосиков
-        /// </summary>
-        /// <param name="chatId"></param>
-        /// <param name="cancellationToken"></param>
-        /// <param name="video"></param>
-        /// <returns></returns>
-        static async Task SendMessage(long chatId, CancellationToken cancellationToken, List<InputMediaVideo> video)
-        {
-            await _botClient.SendMediaGroupAsync(
-            chatId: chatId,
-            video,
-            cancellationToken: cancellationToken);
-        }
-        /// <summary>
-        /// Отправка видео кружочком
-        /// </summary>
-        /// <returns></returns>
-        static async Task SendVideoNote(long chatId, CancellationToken cancellationToken, string videoUrl)
-        {
-            int lastSlashIndex = videoUrl.LastIndexOf('/'); // Находим индекс последнего слэша
-            if (lastSlashIndex != -1)
-            {
-                string fileName = videoUrl.Substring(lastSlashIndex + 1); // Выделяем всё после последнего слэша
-                using (var fileStream = System.IO.File.OpenRead(videoUrl))
-                {
-                    await _botClient.SendVideoNoteAsync(
-                        chatId,
-                        new InputFileStream(fileStream, fileName),
-                        cancellationToken: cancellationToken);
-                }
-            }
-        }
-
+        
         private static async Task GetUserData(Update update, CancellationToken cancellationToken)
         {
             long ChatId = update.Message.Chat.Id;
@@ -533,17 +527,21 @@ namespace HRProBot.Controllers
             worksheet.Cells[1, 5].Value = "Организация";
             worksheet.Cells[1, 6].Value = "Телефон";
             worksheet.Cells[1, 7].Value = "Вопросы";
-            worksheet.Cells[1, 8].Value = "Подписан на курс?";
-            worksheet.Cells[1, 9].Value = "Дата подписки на курс";
-            worksheet.Cells[1, 10].Value = "Этап отправки курсов";
+            worksheet.Cells[1, 8].Value = "Ответы";
+            worksheet.Cells[1, 9].Value = "Подписан на курс?";
+            worksheet.Cells[1, 10].Value = "Дата подписки на курс";
+            worksheet.Cells[1, 11].Value = "Этап отправки курсов";
 
             // Стиль для заголовков
-            using (var range = worksheet.Cells[1, 1, 1, 10])
+            using (var range = worksheet.Cells[1, 1, 1, 11])
             {
                 range.Style.Font.Bold = true;
                 range.Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
                 range.Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightBlue);
             }
+
+            // Включаем фильтры для первой строки
+            worksheet.Cells[1, 1, 1, 11].AutoFilter = true;
 
             using (var db = new LinqToDB.Data.DataConnection(ProviderName.PostgreSQL, _dbConnection))
             {
@@ -551,6 +549,8 @@ namespace HRProBot.Controllers
                 var allUsers = db.GetTable<BotUser>().ToList();
                 // Получаем все вопросы
                 var allQuestions = db.GetTable<UserQuestion>().ToList();
+                // Получаем все ответы
+                var allAnswers = db.GetTable<UserAnswer>().ToList();
 
                 // Заполнение данных
                 int row = 2;
@@ -569,21 +569,273 @@ namespace HRProBot.Controllers
                         .Select(q => q.QuestionText)
                         .ToList();
                     worksheet.Cells[row, 7].Value = string.Join("; ", userQuestions);
+                    // Получаем ответы пользователя и объединяем их через ";"
+                    var userAnswers = allAnswers
+                        .Where(q => q.BotUserId == user.Id)
+                        .Select(q => q.AnswerText)
+                        .ToList();
+                    worksheet.Cells[row, 8].Value = string.Join("; ", userAnswers);
 
-                    worksheet.Cells[row, 8].Value = user.IsSubscribed ? "Yes" : "No";
-                    worksheet.Cells[row, 9].Value = user.DateStartSubscribe?.ToString("dd.MM.yyyy");
-                    worksheet.Cells[row, 10].Value = user.CurrentCourseStep;
+                    worksheet.Cells[row, 9].Value = user.IsSubscribed ? "Yes" : "No";
+                    worksheet.Cells[row, 10].Value = user.DateStartSubscribe?.ToString("dd.MM.yyyy");
+                    worksheet.Cells[row, 11].Value = user.CurrentCourseStep;
+
+                    // Включаем перенос текста для ячеек с вопросами и ответами
+                    worksheet.Cells[row, 7].Style.WrapText = true; // Вопросы
+                    worksheet.Cells[row, 8].Style.WrapText = true; // Ответы
+
                     row++;
                 }
             }
 
-            // Авто-ширина для всех колонок
+            // Авто-ширина для колонок
             worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
+            // Устанавливаем максимальную ширину столбцов вопросов и ответов
+            worksheet.Column(7).Width = 100; // Вопросы
+            worksheet.Column(8).Width = 100; // Ответы
 
             var stream = new MemoryStream();
             package.SaveAs(stream);
             stream.Position = 0;
             return stream;
         }
+
+        private static async Task AnswerToUser(Update update, CancellationToken cancellationToken)
+        {
+            long chatId = update.Message.Chat.Id;
+            var buttons = new ReplyKeyboardMarkup(new[] { new KeyboardButton("🚩 К началу") });
+            buttons.ResizeKeyboard = true;
+
+            // Если пользователь нажал "🚩 К началу" или отправил команду /start
+            if (update.Message.Text == "🚩 К началу" || update.Message.Text == "/start")
+            {
+                await HandleStartCommand(chatId, cancellationToken);
+                return;
+            }
+
+            // Если пользователь отправил команду /answer
+            if (update.Message.Text == "/answer")
+            {
+                _answerFlag = true;
+                await SendMessage(chatId, cancellationToken, "Введите ID пользователя, которому вы хотите ответить:", buttons);
+                return;
+            }
+
+            // Если _answerUserId (пользователя, которому отвечаем) ещё не установлен, ожидаем ввода ID пользователя
+            if (_answerUserId == 0)
+            {
+                if (long.TryParse(update.Message.Text, out long userId))
+                {
+                    using (var db = new LinqToDB.Data.DataConnection(ProviderName.PostgreSQL, _dbConnection))
+                    {
+                        var userExists = db.GetTable<BotUser>().Any(u => u.Id == userId);
+
+                        if (userExists)
+                        {
+                            _answerUserId = userId;
+                            await SendMessage(chatId, cancellationToken, "Введите ответ пользователю (текст + фото/видео, если нужно):", buttons);
+                        }
+                        else
+                        {
+                            await SendMessage(chatId, cancellationToken, "Пользователь не найден в базе данных", buttons);
+                            _answerFlag = false;
+                        }
+                    }
+                }
+                else
+                {
+                    await SendMessage(chatId, cancellationToken, "Неверный ID пользователя. Введите ID из отчёта.", buttons);
+                    _answerFlag = false;
+                }
+            }
+            else
+            {
+                // Обработка ответа пользователю (текст + медиа)
+                string answerText = update.Message.Caption ?? update.Message.Text;
+
+                if (string.IsNullOrEmpty(answerText))
+                {
+                    await SendMessage(chatId, cancellationToken, "Ответ должен содержать текст.", buttons);
+                    return;
+                }
+
+                // Сохраняем текст ответа в базу данных
+                await SaveAnswerToDatabase(_answerUserId, answerText);
+
+                // Если это медиагруппа, создаём экземпляр MediaGroup и добавляем файлы
+                if (!string.IsNullOrEmpty(update.Message.MediaGroupId))
+                {
+                    var mediaGroupId = update.Message.MediaGroupId;
+
+                    // Получаем или создаем экземпляр MediaGroup
+                    var mediaGroup = _mediaGroups.GetOrAdd(mediaGroupId, id => new MediaGroup(id));
+
+                    // Устанавливаем текст сообщения (подпись)
+                    mediaGroup.Caption = answerText;
+
+                    // Добавляем файл в медиагруппу
+                    if (update.Message.Type == MessageType.Photo)
+                    {
+                        var photoFileId = update.Message.Photo.Last().FileId;
+                        mediaGroup.AddFile(update.Message.Chat.Id, photoFileId);
+                    }
+                    else if (update.Message.Type == MessageType.Video)
+                    {
+                        var videoFileId = update.Message.Video.FileId;
+                        mediaGroup.AddFile(update.Message.Chat.Id, videoFileId);
+                    }
+
+                    // Если медиагруппа еще не обрабатывается, запускаем фоновую задачу
+                    if (!mediaGroup.IsProcessing)
+                    {
+                        mediaGroup.IsProcessing = true;
+
+                        _ = Task.Run(async () =>
+                        {
+                            while (true)
+                            {
+                                await Task.Delay(100); // Проверяем каждые 100 мс
+
+                                // Если медиагруппа завершена, отправляем её
+                                if (mediaGroup.IsComplete())
+                                {
+                                    await HandleMediaGroup(_botClient, mediaGroup, cancellationToken);
+
+                                    // Удаляем медиагруппу из словаря после отправки
+                                    _mediaGroups.TryRemove(mediaGroupId, out _);
+                                    break;
+                                }
+                            }
+                        }, cancellationToken);
+                    }
+                }
+                else
+                {
+                    // Если это одиночное сообщение (текст, фото, видео и т.д.)
+                    if (update.Message.Type == MessageType.Photo)
+                    {
+                        // Отправляем фото с текстом
+                        var photoFileId = update.Message.Photo.Last().FileId;
+                        await SendPhotoWithCaption(_answerUserId, cancellationToken, photoFileId, answerText, buttons);
+                    }
+                    else if (update.Message.Type == MessageType.Video)
+                    {
+                        // Отправляем видео с текстом
+                        var videoFileId = update.Message.Video.FileId;
+                        await SendVideoWithCaption(_answerUserId, cancellationToken, videoFileId, answerText, buttons);
+                    }
+                    else if (update.Message.Type == MessageType.VideoNote)
+                    {
+                        // Отправляем видеосообщение (кружок)
+                        await SendVideoNote(_answerUserId, cancellationToken, update.Message.VideoNote.FileId);
+                        await SendMessage(_answerUserId, cancellationToken, answerText, buttons); // Отправляем текст отдельно
+                    }
+                    else
+                    {
+                        // Отправляем только текст
+                        await SendMessage(_answerUserId, cancellationToken, answerText, buttons);
+                    }
+                }
+
+                // Сбрасываем состояние
+                _answerUserId = 0;
+                _answerFlag = false;
+                await SendMessage(chatId, cancellationToken, "Ответ отправлен пользователю.", buttons);
+            }
+        }
+
+        /// <summary>
+        /// Сохраняет ответ в базу данных.
+        /// </summary>
+        private static async Task SaveAnswerToDatabase(long userId, string answerText)
+        {
+            using (var db = new LinqToDB.Data.DataConnection(ProviderName.PostgreSQL, _dbConnection))
+            {
+                var table = db.GetTable<UserAnswer>();
+                db.Insert(new UserAnswer { BotUserId = userId, AnswerText = answerText });
+            }
+        }
+
+        /// <summary>
+        /// Отправка текста
+        /// </summary>
+        /// <param name="chatId"></param>
+        /// <param name="cancellationToken"></param>
+        /// <param name="textMessage"></param>
+        /// <param name="buttons"></param>
+        /// <returns></returns>
+        static async Task SendMessage(long chatId, CancellationToken cancellationToken, string textMessage, ReplyKeyboardMarkup? buttons)
+        {
+            ReplyKeyboardRemove removeKeyboard = new ReplyKeyboardRemove();
+
+            if (buttons == null)
+            {
+                await _botClient.SendTextMessageAsync(
+                chatId: chatId,
+                text: textMessage,
+                replyMarkup: removeKeyboard,
+                cancellationToken: cancellationToken);
+            }
+            else
+            {
+                await _botClient.SendTextMessageAsync(
+                chatId: chatId,
+                text: textMessage,
+                replyMarkup: buttons,
+                cancellationToken: cancellationToken);
+            }
+        }
+
+        /// <summary>
+        /// Отправляет одну фотографию с текстом.
+        /// </summary>
+        private static async Task SendPhotoWithCaption(long chatId, CancellationToken cancellationToken, string fileId, string caption, ReplyKeyboardMarkup? buttons)
+        {
+            await _botClient.SendPhotoAsync(
+                chatId: chatId,
+                photo: fileId,
+                caption: caption,
+                replyMarkup: buttons,
+                cancellationToken: cancellationToken);
+        }
+
+        /// <summary>
+        /// Отправляет несколько фотографий с текстом.
+        /// </summary>
+        private static async Task SendMediaGroupWithCaption(long chatId, CancellationToken cancellationToken, List<InputMediaPhoto> photos, string caption)
+        {
+            // Устанавливаем текст для первой фотографии
+            photos[0].Caption = caption;
+
+            await _botClient.SendMediaGroupAsync(
+                chatId: chatId,
+                media: photos,
+                cancellationToken: cancellationToken);
+        }
+
+        /// <summary>
+        /// Отправляет одно видео с текстом.
+        /// </summary>
+        private static async Task SendVideoWithCaption(long chatId, CancellationToken cancellationToken, string fileId, string caption, ReplyKeyboardMarkup? buttons)
+        {
+            await _botClient.SendVideoAsync(
+                chatId: chatId,
+                video: fileId,
+                caption: caption,
+                replyMarkup: buttons,
+                cancellationToken: cancellationToken);
+        }
+
+        /// <summary>
+        /// Отправляет видеосообщение (кружок).
+        /// </summary>
+        private static async Task SendVideoNote(long chatId, CancellationToken cancellationToken, string fileId)
+        {
+            await _botClient.SendVideoNoteAsync(
+                chatId: chatId,
+                videoNote: fileId,
+                cancellationToken: cancellationToken);
+        }
     }
 }
+    
