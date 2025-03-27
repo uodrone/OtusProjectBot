@@ -21,22 +21,27 @@ namespace HRProBot.Controllers
         private static GoogleSheetsController _googleSheets;
         private static ITelegramBotClient _botClient;
         private static IList<IList<object>> _botMessagesData;
+        private static IList<IList<object>> _botMailingData;
         private static string _dbConnection;
         private static BotUser _user;
         private static AppDBUpdate _appDbUpdate = new AppDBUpdate();
         private static long _answerUserId;
         private static bool _answerFlag;
+        private static IOptionsSnapshot<AppSettings> _appSettings;
 
         private static readonly ConcurrentDictionary<string, MediaGroup> _mediaGroups = new ConcurrentDictionary<string, MediaGroup>();
 
         public UpdateHandler(IOptionsSnapshot<AppSettings> appSettings, ITelegramBotClient botClient, string dbConnection)
         {
-            _administrators = appSettings.Value.TlgBotAdministrators.Split(';');
-            _googleSheets = new GoogleSheetsController(appSettings);
+            _appSettings = appSettings;
+            _administrators = _appSettings.Value.TlgBotAdministrators.Split(';');
+            _googleSheets = new GoogleSheetsController(_appSettings);
             _botClient = botClient;
             _dbConnection = dbConnection;
-            var range = appSettings.Value.GoogleSheetsRange;
-            _botMessagesData = _googleSheets.GetData(range);
+            var menuRange = _appSettings.Value.GoogleSheetsRange;
+            var mailingRange = _appSettings.Value.GoogleSheetsMailing;
+            _botMessagesData = _googleSheets.GetData(menuRange);
+            _botMailingData = _googleSheets.GetData(mailingRange);
             var cts = new CancellationTokenSource(); // прерыватель соединения с ботом
         }
 
@@ -309,7 +314,7 @@ namespace HRProBot.Controllers
                 _user.DateStartSubscribe = date;
                 _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                 await SendMessage(chatId, cancellationToken, Message, Buttons);
-                var courseController = new CourseController(_user, _botClient, _dbConnection);
+                var courseController = new CourseController(_user, _botClient, _appSettings, _dbConnection);
                 courseController.StartSendingMaterials();
             }
             else
