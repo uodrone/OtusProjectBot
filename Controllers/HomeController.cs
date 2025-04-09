@@ -18,7 +18,6 @@ namespace HRProBot.Controllers
 
         public IActionResult Index()
         {
-            string token = _appSettings.Value.TlgBotToken;
             //Инициализируем бот
             new BotController(_appSettings);
             return View();
