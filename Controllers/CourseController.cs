@@ -32,48 +32,48 @@ namespace HRProBot.Controllers
 
         private async void SendTrainingCourseMessage(object state)
         {
-            string CourseMessage = null;
-            var AppDbUpdate = new AppDBUpdate();
+            string courseMessage = null;
+            var appDbUpdate = new AppDBUpdate();
 
             if (_user.IsSubscribed && _user.DateStartSubscribe <= DateTime.Now)
             {
                 switch (_user.CurrentCourseStep)
                 {
                     case 1:
-                        CourseMessage = _botCourseData[1][1].ToString();
-                        AppDbUpdate.UserDbUpdate(_user, _dbConnection);
+                        courseMessage = _botCourseData[1][1].ToString();
+                        appDbUpdate.UserDbUpdate(_user, _dbConnection);
                         _user.CurrentCourseStep++;
                         break;
                     case 2:
-                        CourseMessage = _botCourseData[2][1].ToString();
-                        AppDbUpdate.UserDbUpdate(_user, _dbConnection);
+                        courseMessage = _botCourseData[2][1].ToString();
+                        appDbUpdate.UserDbUpdate(_user, _dbConnection);
                         _user.CurrentCourseStep++;
                         break;
                     case 3:
-                        CourseMessage = _botCourseData[3][1].ToString();
-                        AppDbUpdate.UserDbUpdate(_user, _dbConnection);
+                        courseMessage = _botCourseData[3][1].ToString();
+                        appDbUpdate.UserDbUpdate(_user, _dbConnection);
                         _user.CurrentCourseStep++;
                         break;
                     case 4:
-                        CourseMessage = _botCourseData[4][1].ToString();
-                        AppDbUpdate.UserDbUpdate(_user, _dbConnection);
+                        courseMessage = _botCourseData[4][1].ToString();
+                        appDbUpdate.UserDbUpdate(_user, _dbConnection);
                         _user.CurrentCourseStep++;
                         break;
                     case 5:
-                        CourseMessage = _botCourseData[5][1].ToString();
-                        AppDbUpdate.UserDbUpdate(_user, _dbConnection);
+                        courseMessage = _botCourseData[5][1].ToString();
+                        appDbUpdate.UserDbUpdate(_user, _dbConnection);
                         _user.CurrentCourseStep++;
                         break;
                     case 6:
-                        CourseMessage = _botCourseData[6][1].ToString();
-                        AppDbUpdate.UserDbUpdate(_user, _dbConnection);
+                        courseMessage = _botCourseData[6][1].ToString();
+                        appDbUpdate.UserDbUpdate(_user, _dbConnection);
                         StopSendingMaterials();
                         break;
                 }
 
-                if (CourseMessage != null)
+                if (courseMessage != null)
                 {
-                    await _botClient.SendTextMessageAsync(_user.Id, CourseMessage);
+                    await _botClient.SendTextMessageAsync(_user.Id, courseMessage);
                 }
             } 
             else

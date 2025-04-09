@@ -56,23 +56,22 @@ namespace HRProBot.Controllers
                 return; // Игнорируем всё, кроме сообщений, и сообщения без отправителя
             }
 
-            var Me = await botClient.GetMe();
-            var UserParams = update.Message.From;
-            string? BotName = Me.FirstName; // Имя бота            
-            long ChatId = update.Message.Chat.Id;
+            var me = await botClient.GetMe();
+            var userParams = update.Message.From;       
+            long chatId = update.Message.Chat.Id;
 
             using (var db = new LinqToDB.Data.DataConnection(ProviderName.PostgreSQL, _dbConnection))
             {
                 var table = db.GetTable<BotUser>();
-                _user = table.Where(x => x.Id == UserParams.Id).FirstOrDefault();
+                _user = table.Where(x => x.Id == userParams.Id).FirstOrDefault();
 
                 if (_user == null)
                 {
                     // Создаем нового пользователя
                     _user = new BotUser
                     {
-                        Id = UserParams.Id,
-                        UserName = UserParams.Username
+                        Id = userParams.Id,
+                        UserName = userParams.Username
                     };
 
                     // Вставляем нового пользователя в базу данных
@@ -151,7 +150,7 @@ namespace HRProBot.Controllers
                 }
                 else
                 {
-                    await SendMessage(ChatId, cancellationToken, "Неподдерживаемый тип сообщения. Используйте текстовые команды.", null);
+                    await SendMessage(chatId, cancellationToken, "Неподдерживаемый тип сообщения. Используйте текстовые команды.", null);
                 }
             }
         }
