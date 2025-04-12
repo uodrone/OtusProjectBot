@@ -28,6 +28,7 @@ namespace HRProBot.Controllers
         private static AppDBUpdate _appDbUpdate = new AppDBUpdate();
         private static long _answerUserId;
         private static bool _answerFlag;
+        private static bool _mailingFlag;
         private static IOptionsSnapshot<AppSettings> _appSettings;  
 
         private static readonly ConcurrentDictionary<string, MediaGroup> _mediaGroups = new ConcurrentDictionary<string, MediaGroup>();
@@ -51,10 +52,10 @@ namespace HRProBot.Controllers
 
         public async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
         {
-            // Критически важная проверка
+            // Игнорируем всё, кроме сообщений, и сообщения без отправителя
             if (update.Type != UpdateType.Message || update.Message == null || update.Message.From == null)
             {
-                return; // Игнорируем всё, кроме сообщений, и сообщения без отправителя
+                return; 
             }
 
             var me = await botClient.GetMe();
@@ -90,6 +91,21 @@ namespace HRProBot.Controllers
             if (_answerFlag)
             {
                 await AnswerToUser(update, cancellationToken);
+                return;
+            }
+
+            if (_mailingFlag)
+            {
+                if (update.Message.Text == "✅ Да")
+                {
+                    Mailing(update, cancellationToken, false);
+                } 
+                else
+                {
+                    await HandleStartCommand(update.Message.Chat.Id, cancellationToken);
+                }
+
+                _mailingFlag = false;
                 return;
             }
 
@@ -214,12 +230,22 @@ namespace HRProBot.Controllers
                 case "/mailing":
                     if (IsBotAdministrator(update.Message.From))
                     {
-                        await SendMessage(ChatId, cancellationToken, "Массовая рассылка началась", null);
+                        var buttons = new ReplyKeyboardMarkup(
+                        new[]
+                        {
+                            new KeyboardButton("✅ Да"),
+                            new KeyboardButton("❌ Нет")
+                        });
+                        buttons.ResizeKeyboard = true;
+
+                        await SendMessage(ChatId, cancellationToken, "Вы точно уверены что хотите отправить массовую рассылку?", buttons);
+                        _mailingFlag = true;
                     }
                     break;
                 case "/testmailing":
                     if (IsBotAdministrator(update.Message.From))
                     {
+                        await SendMessage(ChatId, cancellationToken, "Тестовая массовая расылка началась", null);
                         Mailing(update, cancellationToken, true);
                     }
                     break;
