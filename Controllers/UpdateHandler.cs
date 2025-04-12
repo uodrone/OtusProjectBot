@@ -938,13 +938,66 @@ namespace HRProBot.Controllers
         /// <summary>
         /// Отправляет видеосообщение (кружок).
         /// </summary>
-        private static async Task SendVideoNote(long chatId, CancellationToken cancellationToken, string fileId, ReplyKeyboardMarkup? buttons)
+        private static async Task SendVideoNote(long chatId, CancellationToken cancellationToken, string fileIdOrUrl, ReplyKeyboardMarkup? buttons)
         {
-            await _botClient.SendVideoNoteAsync(
-                chatId: chatId,
-                videoNote: fileId,
-                replyMarkup: buttons,
-                cancellationToken: cancellationToken);
+            try
+            {
+                string filePath = null;
+
+                // Если это URL, сохраняем файл локально
+                if (Uri.TryCreate(fileIdOrUrl, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+                {
+                    filePath = await SaveFileFromUrl(fileIdOrUrl, "VideoNotes");
+                }
+                else
+                {
+                    // Если это file_id или локальный путь, используем его напрямую
+                    filePath = fileIdOrUrl;
+                }
+
+                // Отправляем видеосообщение
+                using (var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read))
+                {
+                    await _botClient.SendVideoNoteAsync(
+                        chatId: chatId,
+                        videoNote: InputFile.FromStream(fileStream),
+                        replyMarkup: buttons,
+                        cancellationToken: cancellationToken);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Ошибка при отправке видеосообщения: {ex.Message}");
+                await SendMessage(chatId, cancellationToken, $"Видеосообщение не может быть отправлено: {ex.Message}", buttons);
+            }
+        }
+
+        private static async Task<string> SaveFileFromUrl(string fileUrl, string folderName)
+        {
+            try
+            {
+                // Создаем папку, если она не существует
+                string projectDirectory = AppDomain.CurrentDomain.BaseDirectory;
+                string folderPath = Path.Combine(projectDirectory, folderName);
+                Directory.CreateDirectory(folderPath);
+
+                // Получаем имя файла из URL
+                string fileName = Path.GetFileName(new Uri(fileUrl).LocalPath);
+                string filePath = Path.Combine(folderPath, fileName);
+
+                // Скачиваем файл
+                using (var httpClient = new HttpClient())
+                {
+                    var fileBytes = await httpClient.GetByteArrayAsync(fileUrl);
+                    await File.WriteAllBytesAsync(filePath, fileBytes);
+                }
+
+                return filePath; // Возвращаем путь к сохраненному файлу
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Ошибка при сохранении файла: {ex.Message}");
+            }
         }
     }
 }
