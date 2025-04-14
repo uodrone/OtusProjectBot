@@ -973,7 +973,8 @@ namespace HRProBot.Controllers
                 // Если это URL, сохраняем файл локально
                 if (Uri.TryCreate(fileIdOrUrl, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
                 {
-                    filePath = await SaveFileFromUrl(fileIdOrUrl, "VideoNotes");
+                    var FileController = new FileController();
+                    filePath = await FileController.SaveFileFromUrl(fileIdOrUrl, "VideoNotes");
                 }
                 else
                 {
@@ -993,36 +994,8 @@ namespace HRProBot.Controllers
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Ошибка при отправке видеосообщения: {ex.Message}");
+                ///<todo>Удолить перед публикаций на прод</todo>
                 await SendMessage(chatId, cancellationToken, $"Видеосообщение не может быть отправлено: {ex.Message}", buttons);
-            }
-        }
-
-        private static async Task<string> SaveFileFromUrl(string fileUrl, string folderName)
-        {
-            try
-            {
-                // Создаем папку, если она не существует
-                string projectDirectory = AppDomain.CurrentDomain.BaseDirectory;
-                string folderPath = Path.Combine(projectDirectory, folderName);
-                Directory.CreateDirectory(folderPath);
-
-                // Получаем имя файла из URL
-                string fileName = Path.GetFileName(new Uri(fileUrl).LocalPath);
-                string filePath = Path.Combine(folderPath, fileName);
-
-                // Скачиваем файл
-                using (var httpClient = new HttpClient())
-                {
-                    var fileBytes = await httpClient.GetByteArrayAsync(fileUrl);
-                    await File.WriteAllBytesAsync(filePath, fileBytes);
-                }
-
-                return filePath; // Возвращаем путь к сохраненному файлу
-            }
-            catch (Exception ex)
-            {
-                throw new Exception($"Ошибка при сохранении файла: {ex.Message}");
             }
         }
     }
