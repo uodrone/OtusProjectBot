@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using HRProBot.Interfaces;
 using HRProBot.Models;
 using LinqToDB;
+using LinqToDB.Common;
 using Microsoft.Extensions.Options;
 using Telegram.Bot;
 using Telegram.Bot.Types;
@@ -33,6 +34,7 @@ namespace HRProBot.Controllers
         private async void SendTrainingCourseMessage(object state)
         {
             string courseMessage = null;
+            string courseImg = null;
             var appDbUpdate = new AppDBUpdate();
 
             if (_user.IsSubscribed && _user.DateStartSubscribe <= DateTime.Now)
@@ -41,31 +43,37 @@ namespace HRProBot.Controllers
                 {
                     case 1:
                         courseMessage = _botCourseData[1][1].ToString();
+                        courseImg = _botCourseData[1][2].ToString();
                         appDbUpdate.UserDbUpdate(_user, _dbConnection);
                         _user.CurrentCourseStep++;
                         break;
                     case 2:
                         courseMessage = _botCourseData[2][1].ToString();
+                        courseImg = _botCourseData[2][2].ToString();
                         appDbUpdate.UserDbUpdate(_user, _dbConnection);
                         _user.CurrentCourseStep++;
                         break;
                     case 3:
                         courseMessage = _botCourseData[3][1].ToString();
+                        courseImg = _botCourseData[3][2].ToString();
                         appDbUpdate.UserDbUpdate(_user, _dbConnection);
                         _user.CurrentCourseStep++;
                         break;
                     case 4:
                         courseMessage = _botCourseData[4][1].ToString();
+                        courseImg = _botCourseData[4][2].ToString();
                         appDbUpdate.UserDbUpdate(_user, _dbConnection);
                         _user.CurrentCourseStep++;
                         break;
                     case 5:
                         courseMessage = _botCourseData[5][1].ToString();
+                        courseImg = _botCourseData[5][2].ToString();
                         appDbUpdate.UserDbUpdate(_user, _dbConnection);
                         _user.CurrentCourseStep++;
                         break;
                     case 6:
                         courseMessage = _botCourseData[6][1].ToString();
+                        courseImg = _botCourseData[6][2].ToString();
                         appDbUpdate.UserDbUpdate(_user, _dbConnection);
                         StopSendingMaterials();
                         break;
@@ -73,7 +81,17 @@ namespace HRProBot.Controllers
 
                 if (courseMessage != null)
                 {
-                    await _botClient.SendTextMessageAsync(_user.Id, courseMessage);
+                    if (courseImg != null)
+                    {
+                        await _botClient.SendPhotoAsync(
+                        chatId: _user.Id,
+                        photo: courseImg,
+                        caption: courseMessage);
+                    }
+                    else
+                    {
+                        await _botClient.SendTextMessageAsync(_user.Id, courseMessage);
+                    }
                 }
             } 
             else
