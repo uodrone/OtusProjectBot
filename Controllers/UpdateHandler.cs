@@ -205,7 +205,7 @@ namespace HRProBot.Controllers
                 case "/start":
                     await HandleStartCommand(ChatId, cancellationToken);
                     break;
-                case "📅 Подписаться на курс":
+                case "📅 Подписаться на курс обучения":
                 case "/course":
                     await HandleCourseCommand(ChatId, cancellationToken);
                     break;
@@ -216,6 +216,10 @@ namespace HRProBot.Controllers
                 case "🔍 О системе HR Pro":
                 case "/hrpro":
                     await HandleAboutHrProCommand(ChatId, cancellationToken);
+                    break;
+                case "💪 Подробно о решениях системы":
+                case "/solutions":                    
+                     await HandleAboutSolutionsCommand(ChatId, cancellationToken);                    
                     break;
                 case "🙋‍♂️ Задать вопрос эксперту":
                 case "/ask":
@@ -305,11 +309,12 @@ namespace HRProBot.Controllers
                 new[]
                 {
                     new[] {
-                        new KeyboardButton("📅 Подписаться на курс"),
+                        new KeyboardButton("🔍 О системе HR Pro"),
+                        new KeyboardButton("💪 Подробно о решениях системы"),
                         new KeyboardButton("🤵‍♂️ Узнать об экспертах")
                     },
                     new[] {
-                        new KeyboardButton("🔍 О системе HR Pro"),
+                        new KeyboardButton("📅 Подписаться на курс обучения"),
                         new KeyboardButton("🙋‍♂️ Задать вопрос эксперту")
                     }
                 });
@@ -354,14 +359,26 @@ namespace HRProBot.Controllers
         /// <returns></returns>
         private static async Task HandleExpertsCommand(long chatId, CancellationToken cancellationToken)
         {
-            string Message = _botMessagesData[3][3].ToString();
-            var Buttons = new ReplyKeyboardMarkup(
+            string message = _botMessagesData[3][3].ToString();
+            string imagesUrl = _botMessagesData[3][4].ToString();
+            // Разделяем строку с URL изображений, если она не пустая
+            string[] imageArray = !string.IsNullOrEmpty(imagesUrl) ? imagesUrl.Split(';') : Array.Empty<string>();
+            // Создаем список фоток из урлов
+            var mediaGroup = new List<InputMediaPhoto>();
+
+            foreach (var url in imageArray)
+            {
+                // Добавляем каждую фотографию в медиагруппу, используя URL
+                mediaGroup.Add(new InputMediaPhoto(url));
+            }
+            var buttons = new ReplyKeyboardMarkup(
                 new[] {
                     new KeyboardButton("🚩 К началу"),
                     new KeyboardButton("🙋‍♂️ Задать вопрос эксперту")
                 });
-            Buttons.ResizeKeyboard = true;
-            await SendMessage(chatId, cancellationToken, Message, Buttons);
+            buttons.ResizeKeyboard = true;
+            SendMediaGroupWithCaption(chatId, cancellationToken, mediaGroup, message, buttons);
+            //await SendMessage(chatId, cancellationToken, Message, buttons);
         }
         /// <summary>
         /// обработчик команды с информацией об HR Pro
@@ -372,15 +389,32 @@ namespace HRProBot.Controllers
         private static async Task HandleAboutHrProCommand(long chatId, CancellationToken cancellationToken)
         {
             string Message = _botMessagesData[4][3].ToString();
+            string imageUrl = _botMessagesData[4][4].ToString();
+            var Buttons = new ReplyKeyboardMarkup(
+                new[] {
+                    new KeyboardButton("🚩 К началу")
+                });
+            Buttons.ResizeKeyboard = true;            
+            await SendPhotoWithCaption(chatId, cancellationToken, imageUrl, Message, Buttons);
+        }
+        /// <summary>
+        /// обработчик команды с информацией о решениях HR Pro
+        /// </summary>
+        /// <param name="chatId"></param>
+        /// <param name="cancellationToken"></param>
+        /// <returns></returns>
+        private static async Task HandleAboutSolutionsCommand(long chatId, CancellationToken cancellationToken)
+        {
+            string Message = _botMessagesData[6][3].ToString();
+            string imageUrl = _botMessagesData[6][4].ToString();
             var Buttons = new ReplyKeyboardMarkup(
                 new[] {
                     new KeyboardButton("🚩 К началу")
                 });
             Buttons.ResizeKeyboard = true;
-            string imageUrl = "https://www.directum.ru/application/images/hr-pro_logo_vertical.png";
             await SendPhotoWithCaption(chatId, cancellationToken, imageUrl, Message, Buttons);
         }
-        
+
         private static async Task GetUserData(Update update, CancellationToken cancellationToken)
         {
             long ChatId = update.Message.Chat.Id;
@@ -856,7 +890,7 @@ namespace HRProBot.Controllers
                 }
                 else if (mediaGroup.Count > 1)
                 {
-                    await SendMediaGroupWithCaption(chatId, cancellationToken, mediaGroup, message);
+                    await SendMediaGroupWithCaption(chatId, cancellationToken, mediaGroup, message, null);
                 }
             }
             else
@@ -894,6 +928,7 @@ namespace HRProBot.Controllers
                 await _botClient.SendTextMessageAsync(
                 chatId: chatId,
                 text: textMessage,
+                parseMode: ParseMode.Html,
                 replyMarkup: removeKeyboard,
                 cancellationToken: cancellationToken);
             }
@@ -902,6 +937,7 @@ namespace HRProBot.Controllers
                 await _botClient.SendTextMessageAsync(
                 chatId: chatId,
                 text: textMessage,
+                parseMode: ParseMode.Html,
                 replyMarkup: buttons,
                 cancellationToken: cancellationToken);
             }
@@ -912,26 +948,115 @@ namespace HRProBot.Controllers
         /// </summary>
         private static async Task SendPhotoWithCaption(long chatId, CancellationToken cancellationToken, string fileId, string caption, ReplyKeyboardMarkup? buttons)
         {
-            await _botClient.SendPhotoAsync(
-                chatId: chatId,
-                photo: fileId,
-                caption: caption,
-                replyMarkup: buttons,
-                cancellationToken: cancellationToken);
+            try
+            {
+                int maxCaptionLength = 1024;
+
+                if (string.IsNullOrEmpty(caption) || caption.Length <= maxCaptionLength)
+                {
+                    // Если текст короткий, отправляем всё вместе
+                    await _botClient.SendPhotoAsync(
+                        chatId: chatId,
+                        photo: fileId,
+                        caption: caption,
+                        parseMode: ParseMode.Html,
+                        replyMarkup: buttons,
+                        cancellationToken: cancellationToken);
+                    return;
+                }
+
+                // Находим позицию для разбиения текста
+                int splitPosition = FindSplitPosition(caption, maxCaptionLength);
+
+                if (splitPosition == -1)
+                {
+                    // Если подходящей позиции не найдено, режем по 1024 символам
+                    splitPosition = maxCaptionLength;
+                }
+
+                string photoCaption = caption.Substring(0, splitPosition).Trim();
+                string remainingText = caption.Substring(splitPosition).Trim();
+
+                // Отправляем фото с первым куском текста
+                await _botClient.SendPhotoAsync(
+                    chatId: chatId,
+                    photo: fileId,
+                    caption: photoCaption,
+                    parseMode: ParseMode.Html,
+                    replyMarkup: buttons,
+                    cancellationToken: cancellationToken);
+
+                // Отправляем оставшийся текст отдельным сообщением
+                if (!string.IsNullOrEmpty(remainingText))
+                {
+                    await SendMessage(chatId, cancellationToken, remainingText, buttons);
+                }
+            }
+            catch (Exception ex)
+            {
+                // <todo> удолить перед продом
+                await SendMessage(chatId, cancellationToken, "Не удалось отправить изображение.", buttons);
+            }
         }
 
         /// <summary>
         /// Отправляет несколько фотографий с текстом.
         /// </summary>
-        private static async Task SendMediaGroupWithCaption(long chatId, CancellationToken cancellationToken, List<InputMediaPhoto> photos, string caption)
+        private static async Task SendMediaGroupWithCaption(long chatId, CancellationToken cancellationToken, List<InputMediaPhoto> photos, string caption, ReplyKeyboardMarkup? buttons)
         {
-            // Устанавливаем текст для первой фотографии
-            photos[0].Caption = caption;
+            try
+            {
+                int maxCaptionLength = 1024;
 
-            await _botClient.SendMediaGroupAsync(
-                chatId: chatId,
-                media: photos,
-                cancellationToken: cancellationToken);
+                // Если текст короткий, отправляем всё вместе
+                if (string.IsNullOrEmpty(caption) || caption.Length <= maxCaptionLength)
+                {
+                    // Устанавливаем текст для первой фотографии
+                    // Применяем форматирование HTML только к первой фотографии
+                    photos[0] = new InputMediaPhoto(photos[0].Media)
+                    {
+                        Caption = caption,
+                        ParseMode = ParseMode.Html
+                    };
+
+                    await _botClient.SendMediaGroupAsync(
+                        chatId: chatId,
+                        media: photos,
+                        cancellationToken: cancellationToken);
+                    return;
+                }
+
+                // Находим позицию для разбиения текста
+                int splitPosition = FindSplitPosition(caption, maxCaptionLength);
+
+                if (splitPosition == -1)
+                {
+                    // Если подходящей позиции не найдено, режем по 1024 символам
+                    splitPosition = maxCaptionLength;
+                }
+
+                string photoCaption = caption.Substring(0, splitPosition).Trim();
+                string remainingText = caption.Substring(splitPosition).Trim();
+
+                // Устанавливаем текст для первой фотографии
+                photos[0].Caption = caption;
+
+                await _botClient.SendMediaGroupAsync(
+                    chatId: chatId,
+                    media: photos,
+                    cancellationToken: cancellationToken);
+
+                // Отправляем оставшийся текст отдельным сообщением
+                if (!string.IsNullOrEmpty(remainingText))
+                {
+                    await SendMessage(chatId, cancellationToken, remainingText, buttons);
+                }
+            }
+            catch (Exception ex)
+            {
+                // <todo> удолить перед продом
+                await SendMessage(chatId, cancellationToken, "Не удалось отправить.", null);
+            }            
         }
 
         /// <summary>
@@ -997,6 +1122,28 @@ namespace HRProBot.Controllers
                 ///<todo>Удолить перед публикаций на прод</todo>
                 await SendMessage(chatId, cancellationToken, $"Видеосообщение не может быть отправлено: {ex.Message}", buttons);
             }
+        }
+
+        private static int FindSplitPosition(string text, int maxLength)
+        {
+            // Ищем ближайший перенос строки перед максимумом символов
+            int newlinePosition = text.LastIndexOf('\n', maxLength - 1);
+
+            if (newlinePosition != -1)
+            {
+                return newlinePosition;
+            }
+
+            // Если не нашли перенос строки, ищем точку
+            int dotPosition = text.LastIndexOf('.', maxLength - 1);
+
+            if (dotPosition != -1)
+            {
+                return dotPosition;
+            }
+
+            // Если ничего не нашли, режем по максимальной длине
+            return maxLength;
         }
     }
 }
