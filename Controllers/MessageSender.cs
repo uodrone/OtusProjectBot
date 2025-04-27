@@ -90,7 +90,11 @@ namespace HRProBot.Services
             }
         }
 
-        public async Task SendMediaGroupWithCaption(long chatId, CancellationToken cancellationToken, List<InputMediaPhoto> photos, string caption, ReplyKeyboardMarkup? buttons)
+        public async Task SendMediaGroupWithCaption(long chatId,
+                                                    CancellationToken cancellationToken,
+                                                    List<InputMediaPhoto> photos,
+                                                    string caption,
+                                                    ReplyKeyboardMarkup? buttons)
         {
             try
             {
@@ -99,6 +103,7 @@ namespace HRProBot.Services
                 {
                     photos[0] = new InputMediaPhoto(photos[0].Media) { Caption = caption, ParseMode = ParseMode.Html };
                     await _botClient.SendMediaGroupAsync(chatId: chatId, media: photos, cancellationToken: cancellationToken);
+                    await SendMessage(chatId, cancellationToken, "Чтобы перейти к нужному разделу, нажми кнопку в меню 🔽", buttons);
                     return;
                 }
 
@@ -224,6 +229,21 @@ namespace HRProBot.Services
             {
                 await SendMessage(chatId, cancellationToken, message, buttons);
             }
+        }
+
+        public async Task<List<InputMediaPhoto>> ConvertImgStringToMediaListAsync(string imagesUrl)
+        {
+            // Разделяем строку с URL изображений, если она не пустая
+            string[] imageArray = !string.IsNullOrEmpty(imagesUrl) ? imagesUrl.Split(';') : Array.Empty<string>();
+            var mediaGroup = new List<InputMediaPhoto>();
+
+            foreach (var url in imageArray)
+            {
+                // Добавляем каждую фотографию в медиагруппу, используя URL
+                mediaGroup.Add(new InputMediaPhoto(url));
+            }
+
+            return mediaGroup;
         }
     }
 }

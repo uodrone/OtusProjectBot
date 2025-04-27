@@ -28,6 +28,7 @@ namespace HRProBot.Controllers
         private static BotUser _user;
         private static AppDBUpdate _appDbUpdate = new AppDBUpdate();
         private static long _answerUserId;
+        private static bool _askFlag;
         private static bool _answerFlag;
         private static bool _mailingFlag;
         private static MessageSender _messageSender;
@@ -210,7 +211,8 @@ namespace HRProBot.Controllers
                     break;
                 case "📅 Подписаться на курс обучения":
                 case "/course":
-                    await HandleCourseCommand(ChatId, cancellationToken);
+                    _askFlag = false;                    
+                    await GetUserData(update, cancellationToken);
                     break;
                 case "🤵‍♂️ Узнать об экспертах":
                 case "/experts":
@@ -226,6 +228,7 @@ namespace HRProBot.Controllers
                     break;
                 case "🙋‍♂️ Задать вопрос эксперту":
                 case "/ask":
+                    _askFlag = true;
                     if (_user.DataCollectStep == 6)
                     {
                         _user.DataCollectStep = 5;
@@ -308,7 +311,7 @@ namespace HRProBot.Controllers
         private static async Task HandleStartCommand(long chatId, CancellationToken cancellationToken)
         {
             string Message = _botMessagesData[1][3].ToString();
-            var Buttons = new ReplyKeyboardMarkup(
+            var buttons = new ReplyKeyboardMarkup(
                 new[]
                 {
                     new[] {
@@ -321,14 +324,14 @@ namespace HRProBot.Controllers
                         new KeyboardButton("🙋‍♂️ Задать вопрос эксперту")
                     }
                 });
-            Buttons.ResizeKeyboard = true;
+            buttons.ResizeKeyboard = true;
 
-            await _messageSender.SendMessage(chatId, cancellationToken, Message, Buttons);
+            await _messageSender.SendMessage(chatId, cancellationToken, Message, buttons);
         }
         /// <summary>
         /// Обработчик записи на курсы
         /// </summary>
-        /// <param name="chatId"></param>
+        /// <param name="update"></param>
         /// <param name="cancellationToken"></param>
         /// <returns></returns>
         private static async Task HandleCourseCommand(long chatId, CancellationToken cancellationToken)
@@ -364,24 +367,16 @@ namespace HRProBot.Controllers
         {
             string message = _botMessagesData[3][3].ToString();
             string imagesUrl = _botMessagesData[3][4].ToString();
-            // Разделяем строку с URL изображений, если она не пустая
-            string[] imageArray = !string.IsNullOrEmpty(imagesUrl) ? imagesUrl.Split(';') : Array.Empty<string>();
             // Создаем список фоток из урлов
-            var mediaGroup = new List<InputMediaPhoto>();
-
-            foreach (var url in imageArray)
-            {
-                // Добавляем каждую фотографию в медиагруппу, используя URL
-                mediaGroup.Add(new InputMediaPhoto(url));
-            }
+            var mediaGroup = await _messageSender.ConvertImgStringToMediaListAsync(imagesUrl);
+            
             var buttons = new ReplyKeyboardMarkup(
                 new[] {
                     new KeyboardButton("🚩 К началу"),
                     new KeyboardButton("🙋‍♂️ Задать вопрос эксперту")
                 });
             buttons.ResizeKeyboard = true;
-            _messageSender.SendMediaGroupWithCaption(chatId, cancellationToken, mediaGroup, message, buttons);
-            //await SendMessage(chatId, cancellationToken, Message, buttons);
+            await _messageSender.SendMediaGroupWithCaption(chatId, cancellationToken, mediaGroup, message, buttons);
         }
         /// <summary>
         /// обработчик команды с информацией об HR Pro
@@ -520,6 +515,11 @@ namespace HRProBot.Controllers
                             $"Имя: {_user.FirstName}\nФамилия: {_user.LastName}\nОрганизация: {_user.Organization}\nТелефон: {_user.Phone}\nId пользователя: {_user.Id}", null);
                         await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введите ваш запрос:", Buttons);
                         _user.DataCollectStep = 5;
+                        if (!_askFlag)
+                        {
+                            _user.DataCollectStep = 6;
+                            await HandleCourseCommand(ChatId, cancellationToken);
+                        }
                         _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                     }
                     else
@@ -563,6 +563,7 @@ namespace HRProBot.Controllers
                         Buttons.ResizeKeyboard = true;
                         await _messageSender.SendMessage(ChatId, cancellationToken, $"Спасибо, ваш вопрос получен:\n{question.QuestionText}", Buttons);
                         _user.DataCollectStep = 6;
+                        _askFlag = false;
                         _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                     }
                     else
@@ -570,6 +571,13 @@ namespace HRProBot.Controllers
                         await _messageSender.SendMessage(ChatId, cancellationToken, "Введите не пустой вопрос", null);
                     }
 
+                    break;
+                case 6:
+                    if (!_askFlag)
+                    {
+                        _user.DataCollectStep = 6;
+                        await HandleCourseCommand(ChatId, cancellationToken);
+                    }
                     break;
             }
         }
@@ -815,21 +823,10 @@ namespace HRProBot.Controllers
                 string imagesUrl = _botMailingData[1]?.Count > 1 ? _botMailingData[1][1]?.ToString() ?? string.Empty : string.Empty;
                 string videoUrl = _botMailingData[1]?.Count > 2 ? _botMailingData[1][2]?.ToString() ?? string.Empty : string.Empty;
                 string videoNoteUrl = _botMailingData[1]?.Count > 3 ? _botMailingData[1][3]?.ToString() ?? string.Empty : string.Empty;
-
-                // Разделяем строку с URL изображений, если она не пустая
-                string[] imageArray = !string.IsNullOrEmpty(imagesUrl) ? imagesUrl.Split(';') : Array.Empty<string>();
-
-                // Создаем список фоток из урлов
-                var mediaGroup = new List<InputMediaPhoto>();
                 var buttons = new ReplyKeyboardMarkup(new[] { new KeyboardButton("🚩 К началу") });
                 buttons.ResizeKeyboard = true;
 
-                foreach (var url in imageArray)
-                {
-                    // Добавляем каждую фотографию в медиагруппу, используя URL
-                    mediaGroup.Add(new InputMediaPhoto(url));
-                }
-
+                var mediaGroup = await _messageSender.ConvertImgStringToMediaListAsync(imagesUrl);
 
                 if (isTest)
                 {
@@ -837,7 +834,7 @@ namespace HRProBot.Controllers
                     {
                         if (long.TryParse(admin, out long adminId))
                         {
-                            _messageSender.MailMessage(message, imagesUrl, mediaGroup, videoUrl, videoNoteUrl, cancellationToken, buttons, adminId);
+                            await _messageSender.MailMessage(message, imagesUrl, mediaGroup, videoUrl, videoNoteUrl, cancellationToken, buttons, adminId);
                         }
                     }
                 }
@@ -854,7 +851,7 @@ namespace HRProBot.Controllers
                     {
                         foreach (var userId in userIds)
                         {
-                            _messageSender.MailMessage(message, imagesUrl, mediaGroup, videoUrl, videoNoteUrl, cancellationToken, buttons, userId);
+                            await _messageSender.MailMessage(message, imagesUrl, mediaGroup, videoUrl, videoNoteUrl, cancellationToken, buttons, userId);
                         }
                     }
                 }
