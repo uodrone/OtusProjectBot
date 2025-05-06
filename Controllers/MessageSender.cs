@@ -7,6 +7,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using HRProBot.Controllers;
+using System.Text.RegularExpressions;
 
 namespace HRProBot.Services
 {
@@ -90,44 +91,84 @@ namespace HRProBot.Services
             }
         }
 
-        public async Task SendMediaGroupWithCaption(long chatId,
-                                                    CancellationToken cancellationToken,
-                                                    List<InputMediaPhoto> photos,
-                                                    string caption,
-                                                    ReplyKeyboardMarkup? buttons)
+        /// <summary>
+        /// Отправляет медиагруппу с подписью. Если подпись содержит HTML или длиннее 1024 символов — отправляется отдельным сообщением.
+        /// </summary>
+        /// <summary>
+        /// Отправляет медиагруппу с подписью.
+        /// Если подпись содержит HTML-теги или длиннее 1024 символов — отправляется отдельным сообщением.
+        /// </summary>
+        public async Task SendMediaGroupWithCaption(
+            long chatId,
+            CancellationToken cancellationToken,
+            List<InputMediaPhoto> photos,
+            string caption,
+            ReplyKeyboardMarkup? buttons)
         {
             try
             {
-                int maxCaptionLength = 1024;
-                if (string.IsNullOrEmpty(caption) || caption.Length <= maxCaptionLength)
+                if (photos == null || photos.Count == 0)
                 {
-                    photos[0] = new InputMediaPhoto(photos[0].Media) { Caption = caption, ParseMode = ParseMode.Html };
-                    await _botClient.SendMediaGroupAsync(chatId: chatId, media: photos, cancellationToken: cancellationToken);
-                    await SendMessage(chatId, cancellationToken, "Чтобы перейти к нужному разделу, нажми кнопку в меню 🔽", buttons);
                     return;
                 }
 
-                int splitPosition = FindSplitPosition(caption, maxCaptionLength);
-                if (splitPosition == -1)
+                bool shouldSendMessageSeparately = false;
+
+                // Проверяем: есть ли в строке HTML-теги
+                var htmlTagRegex = new Regex("<.*?>");
+                if (htmlTagRegex.IsMatch(caption))
                 {
-                    splitPosition = maxCaptionLength;
+                    shouldSendMessageSeparately = true;
+                }
+                else if (!string.IsNullOrEmpty(caption) && caption.Length > 1024)
+                {
+                    shouldSendMessageSeparately = true;
                 }
 
-                string photoCaption = caption.Substring(0, splitPosition).Trim();
-                string remainingText = caption.Substring(splitPosition).Trim();
-
-                photos[0].Caption = photoCaption;
-                await _botClient.SendMediaGroupAsync(chatId: chatId, media: photos, cancellationToken: cancellationToken);
-
-                if (!string.IsNullOrEmpty(remainingText))
+                if (shouldSendMessageSeparately)
                 {
-                    await SendMessage(chatId, cancellationToken, remainingText, buttons);
+                    // Отправляем медиагруппу без подписи
+                    await _botClient.SendMediaGroupAsync(
+                    chatId: chatId,
+                    media: photos,
+                    cancellationToken: cancellationToken);
+
+                    // Отправляем текст отдельным сообщением с ParseMode.Html
+                    if (!string.IsNullOrEmpty(caption))
+                    {
+                        await SendMessage(chatId, cancellationToken, caption, null);
+                    }
+
+                    // Кнопка в конце
+                    await SendMessage(chatId, cancellationToken, "Чтобы перейти к нужному разделу, нажми кнопку в меню 🔽", buttons);
+                }
+                else
+                {
+                    // Просто ставим короткую подпись на первую фотографию
+                    if (!string.IsNullOrEmpty(caption))
+                    {
+                        photos[0] = new InputMediaPhoto(photos[0].Media)
+                        {
+                            Caption = caption,
+                            ParseMode = ParseMode.Html // Не влияет, но не мешает
+                        };
+                    }
+
+                    await _botClient.SendMediaGroupAsync(
+                    chatId: chatId,
+                    media: photos,
+                    cancellationToken: cancellationToken);
+
+                    if (buttons != null)
+                    {
+                        await SendMessage(chatId, cancellationToken, "Чтобы перейти к нужному разделу, нажми кнопку в меню 🔽", buttons);
+                    }
                 }
             }
             catch (Exception ex)
             {
                 ///<todo>Удолить перед публикаций на прод</todo>
-                await SendMessage(chatId, cancellationToken, "Не удалось отправить.", null);
+                await SendMessage(chatId, cancellationToken, "Не удалось отправить медиагруппу.", null);
             }
         }
 
@@ -244,6 +285,39 @@ namespace HRProBot.Services
             }
 
             return mediaGroup;
+        }
+
+        public static string ConvertHtmlToTelegramMarkdown(string html)
+        {
+            if (string.IsNullOrEmpty(html))
+                return html;
+
+            // Замена основных тегов на MarkdownV2
+            html = html.Replace("<b>", "*")
+                       .Replace("</b>", "*")
+                       .Replace("<strong>", "*")
+                       .Replace("</strong>", "*")
+                       .Replace("<i>", "_")
+                       .Replace("</i>", "_")
+                       .Replace("<em>", "_")
+                       .Replace("</em>", "_");
+
+            // Замена ссылок: <a href="url">text</a> => [text](url)
+            var linkRegex = new Regex("<a\\s+href=[\"'](?<url>[^\"']*)[\"']>(?<text>[^<]*)</a>",
+                                     RegexOptions.IgnoreCase);
+            html = linkRegex.Replace(html, "[$2]($1)");
+
+            // Удаление неподдерживаемых тегов
+            html = Regex.Replace(html, "<(?!\\/?(b|i|strong|em|a)\\b)[^>]*>", "", RegexOptions.IgnoreCase);
+
+            // Экранирование специальных символов MarkdownV2
+            var specialChars = new[] { '_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!' };
+            foreach (var c in specialChars)
+            {
+                html = html.Replace(c.ToString(), $"\\{c}");
+            }
+
+            return html;
         }
     }
 }

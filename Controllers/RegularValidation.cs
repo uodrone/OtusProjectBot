@@ -21,7 +21,7 @@ namespace HRProBot.Controllers
         public bool ValidatePhone(string phone)
         {
             // Регулярное выражение для телефона:
-            string pattern = @"^(\+?(\d{1,3})[-\s]?)?(\d{1,4}[-\s]?){2,}\d{1,4}$";
+            string pattern = @"^(?=(?:.*\d){11})(\+?(\d{1,3})[-\s]?)?(\d{1,4}[-\s]?){2,}\d{1,4}$";
             return Regex.IsMatch(phone, pattern);
         }
     }
