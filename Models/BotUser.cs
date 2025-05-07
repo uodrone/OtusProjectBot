@@ -33,6 +33,8 @@ namespace HRProBot.Models
 
         [Column(Name = "DataCollectStep")]
         public int DataCollectStep { get; set; }
+        [Column(Name = "IsCollectingData")]
+        public bool IsCollectingData { get; set; } = false;
 
         [Column(Name = "CurrentCourseStep")]
         public int CurrentCourseStep { get; set; } = 1;
