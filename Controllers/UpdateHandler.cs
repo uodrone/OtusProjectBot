@@ -455,6 +455,11 @@ namespace HRProBot.Controllers
                         _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                         return;
                     }
+                    else if (update.Message.Text == "📅 Подписаться на курс обучения" || update.Message.Text == "🙋‍♂️ Задать вопрос эксперту" || update.Message.Text == "/ask")
+                    {
+                        await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введите ваше имя:", Buttons);
+                        return;
+                    }
                     else if (regular.ValidateName(update.Message.Text))
                     {
                         _user.FirstName = update.Message.Text;
@@ -473,6 +478,11 @@ namespace HRProBot.Controllers
                         await HandleStartCommand(ChatId, cancellationToken);
                         _user.IsCollectingData = false;
                         _appDbUpdate.UserDbUpdate(_user, _dbConnection);
+                        return;
+                    }
+                    else if (update.Message.Text == "📅 Подписаться на курс обучения" || update.Message.Text == "🙋‍♂️ Задать вопрос эксперту" || update.Message.Text == "/ask")
+                    {
+                        await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введите вашу фамилию:", Buttons);
                         return;
                     }
                     else if (!string.IsNullOrEmpty(update.Message.Text))
@@ -495,6 +505,11 @@ namespace HRProBot.Controllers
                         _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                         return;
                     }
+                    else if (update.Message.Text == "📅 Подписаться на курс обучения" || update.Message.Text == "🙋‍♂️ Задать вопрос эксперту" || update.Message.Text == "/ask")
+                    {
+                        await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введите вашу организацию:", Buttons);
+                        return;
+                    }
                     else if (regular.ValidateOrganization(update.Message.Text))
                     {
                         _user.Organization = update.Message.Text;
@@ -513,6 +528,11 @@ namespace HRProBot.Controllers
                         await HandleStartCommand(ChatId, cancellationToken);
                         _user.IsCollectingData = false;
                         _appDbUpdate.UserDbUpdate(_user, _dbConnection);
+                        return;
+                    }
+                    else if (update.Message.Text == "📅 Подписаться на курс обучения" || update.Message.Text == "🙋‍♂️ Задать вопрос эксперту" || update.Message.Text == "/ask")
+                    {
+                        await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введите ваш телефон:", Buttons);
                         return;
                     }
                     else if (regular.ValidatePhone(update.Message.Text))
