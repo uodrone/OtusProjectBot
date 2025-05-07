@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using System.Collections.Concurrent;
 using System.Threading;
 using HRProBot.Services;
+using static LinqToDB.Reflection.Methods.LinqToDB;
 
 namespace HRProBot.Controllers
 {
@@ -29,6 +30,7 @@ namespace HRProBot.Controllers
         private static AppDBUpdate _appDbUpdate = new AppDBUpdate();
         private static long _answerUserId;
         private static bool _askFlag;
+        private static bool _courseFlag;
         private static bool _answerFlag;
         private static bool _mailingFlag;
         private static MessageSender _messageSender;
@@ -54,7 +56,7 @@ namespace HRProBot.Controllers
             throw new NotImplementedException("Неизвестная ошибка обработки");
         }
 
-        public async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
+        public async Task HandleUpdateAsync(ITelegramBotClient botClient, Telegram.Bot.Types.Update update, CancellationToken cancellationToken)
         {
             // Игнорируем всё, кроме сообщений, и сообщения без отправителя
             if (update.Type != UpdateType.Message || update.Message == null || update.Message.From == null)
@@ -86,7 +88,7 @@ namespace HRProBot.Controllers
             }
 
             // Если начали собирать данные, но они еще не собраны до конца - дособираем
-            if (_user.IsCollectingData && _user.DataCollectStep > 0 && _user.DataCollectStep < 6)
+            if (_user.DataCollectStep > 0 && _user.DataCollectStep < 6)
             {
                 await GetUserData(update, cancellationToken);
                 return;
@@ -199,49 +201,45 @@ namespace HRProBot.Controllers
         /// <summary>
         /// Обработка текстовых команд
         /// </summary>
-        private async Task HandleTextCommands(Update update, CancellationToken cancellationToken)
+        private async Task HandleTextCommands(Telegram.Bot.Types.Update update, CancellationToken cancellationToken)
         {
-            long ChatId = update.Message.Chat.Id;
+            long chatId = update.Message.Chat.Id;
 
             switch (update.Message.Text)
             {
                 case "🚩 К началу":
                 case "/start":
-                    await HandleStartCommand(ChatId, cancellationToken);
+                    await HandleStartCommand(chatId, cancellationToken);
                     break;
                 case "📅 Подписаться на курс обучения":
                 case "/course":
-                    _askFlag = false;
-                    if (_user.DataCollectStep == 5)
-                    {
-                        _user.DataCollectStep = 6;
-                    }
-                    _user.IsCollectingData = true;
-                    _appDbUpdate.UserDbUpdate(_user, _dbConnection);
+                    _courseFlag = true;
                     await GetUserData(update, cancellationToken);
+                    if (_user.DataCollectStep > 5)
+                    {
+                        await HandleCourseCommand(chatId, cancellationToken);
+                    }                    
                     break;
                 case "🤵‍♂️ Узнать об экспертах":
                 case "/experts":
-                    await HandleExpertsCommand(ChatId, cancellationToken);
+                    await HandleExpertsCommand(chatId, cancellationToken);
                     break;
                 case "🔍 О системе HR Pro":
                 case "/hrpro":
-                    await HandleAboutHrProCommand(ChatId, cancellationToken);
+                    await HandleAboutHrProCommand(chatId, cancellationToken);
                     break;
                 case "💪 Подробно о решениях системы":
                 case "/solutions":                    
-                     await HandleAboutSolutionsCommand(ChatId, cancellationToken);                    
+                     await HandleAboutSolutionsCommand(chatId, cancellationToken);                    
                     break;
                 case "🙋‍♂️ Задать вопрос эксперту":
                 case "/ask":
                     _askFlag = true;
-                    if (_user.DataCollectStep == 6)
-                    {
-                        _user.DataCollectStep = 5;                        
-                    }
-                    _user.IsCollectingData = true;
-                    _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                     await GetUserData(update, cancellationToken);
+                    if (_user.DataCollectStep > 5)
+                    {
+                        await GetUserQuestion(update, cancellationToken);
+                    }
                     break;
                 case "/mailing":
                     if (IsBotAdministrator(update.Message.From))
@@ -254,14 +252,14 @@ namespace HRProBot.Controllers
                         });
                         buttons.ResizeKeyboard = true;
 
-                        await _messageSender.SendMessage(ChatId, cancellationToken, "Вы точно уверены что хотите отправить массовую рассылку?", buttons);
+                        await _messageSender.SendMessage(chatId, cancellationToken, "Вы точно уверены что хотите отправить массовую рассылку?", buttons);
                         _mailingFlag = true;
                     }
                     break;
                 case "/testmailing":
                     if (IsBotAdministrator(update.Message.From))
                     {
-                        await _messageSender.SendMessage(ChatId, cancellationToken, "Тестовая массовая расылка началась", null);
+                        await _messageSender.SendMessage(chatId, cancellationToken, "Тестовая массовая расылка началась", null);
                         Mailing(update, cancellationToken, true);
                     }
                     break;
@@ -270,7 +268,7 @@ namespace HRProBot.Controllers
                     {
                         var reportStream = GenerateUserReport();
                         await _botClient.SendDocumentAsync(
-                            chatId: ChatId,
+                            chatId: chatId,
                             document: new InputFileStream(reportStream, "UsersReport.xlsx"),
                             caption: "Отчет по пользователям",
                             cancellationToken: cancellationToken);
@@ -279,7 +277,7 @@ namespace HRProBot.Controllers
                 case "/answer":
                     if (IsBotAdministrator(update.Message.From))
                     {
-                        await _messageSender.SendMessage(ChatId, cancellationToken, "Введите id пользователя, которому вы хотите ответить", null);
+                        await _messageSender.SendMessage(chatId, cancellationToken, "Введите id пользователя, которому вы хотите ответить", null);
                         _answerFlag = true;
                     }
                     break;
@@ -287,7 +285,7 @@ namespace HRProBot.Controllers
                     var Buttons = new ReplyKeyboardMarkup(new[] { new KeyboardButton("🚩 К началу") });
                     Buttons.ResizeKeyboard = true;
                     var Message = $"Попробуйте еще раз! Ник: {update.Message.From.Username}, Имя: {update.Message.From.FirstName}, id: {update.Message.From.Id} ";
-                    await _messageSender.SendMessage(ChatId, cancellationToken, Message, Buttons);
+                    await _messageSender.SendMessage(chatId, cancellationToken, Message, Buttons);
                     break;
             }
         }
@@ -421,177 +419,163 @@ namespace HRProBot.Controllers
             //await _messageSender.SendPhotoWithCaption(chatId, cancellationToken, imagesUrl, Message, Buttons);
         }
 
-        private static async Task GetUserData(Update update, CancellationToken cancellationToken)
+        private static async Task GetUserData(Telegram.Bot.Types.Update update, CancellationToken cancellationToken)
         {
-            long ChatId = update.Message.Chat.Id;
+            long chatId = update.Message.Chat.Id;
             var regular = new RegularValidation();
-            var Buttons = new ReplyKeyboardMarkup(
+            var buttons = new ReplyKeyboardMarkup(
                             new[] {
                             new KeyboardButton("🚩 К началу")
                             });
-            Buttons.ResizeKeyboard = true;
+            buttons.ResizeKeyboard = true;
 
             switch (_user.DataCollectStep)
             {
                 case 0:
                     if (update.Message.Text == "🚩 К началу" || update.Message.Text == "/start")
                     {
-                        await HandleStartCommand(ChatId, cancellationToken);
-                        _user.IsCollectingData = false;
+                        await HandleStartCommand(chatId, cancellationToken);
                         _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                         return;
                     }
 
-                    await _messageSender.SendMessage(ChatId, cancellationToken, "Наш эксперт ответит на ваш вопрос в течение 3 рабочих дней. Чтобы сформировать обращение мы должны знать ваши данные.", null);
-                    await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введите ваше имя:", Buttons);
+                    await _messageSender.SendMessage(chatId, cancellationToken, "Наш эксперт ответит на ваш вопрос в течение 3 рабочих дней. Чтобы сформировать обращение мы должны знать ваши данные.", null);
+                    await _messageSender.SendMessage(chatId, cancellationToken, "Пожалуйста, введите ваше имя:", buttons);
                     _user.DataCollectStep = 1;
                     _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                     break;
                 case 1:
                     if (update.Message.Text == "🚩 К началу" || update.Message.Text == "/start")
                     {
-                        await HandleStartCommand(ChatId, cancellationToken);
-                        _user.IsCollectingData = false;
+                        await HandleStartCommand(chatId, cancellationToken);
                         _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                         return;
                     }
                     else if (regular.ValidateName(update.Message.Text))
                     {
                         _user.FirstName = update.Message.Text;
-                        await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введите вашу фамилию:", Buttons);
+                        await _messageSender.SendMessage(chatId, cancellationToken, "Пожалуйста, введите вашу фамилию:", buttons);
                         _user.DataCollectStep = 2;
                         _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                     }
                     else
                     {
-                        await _messageSender.SendMessage(ChatId, cancellationToken, "Имя неверное, введите правильное имя", Buttons);
+                        await _messageSender.SendMessage(chatId, cancellationToken, "Имя неверное, введите правильное имя", buttons);
                     }
                     break;
                 case 2:
                     if (update.Message.Text == "🚩 К началу" || update.Message.Text == "/start")
                     {
-                        await HandleStartCommand(ChatId, cancellationToken);
-                        _user.IsCollectingData = false;
+                        await HandleStartCommand(chatId, cancellationToken);
                         _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                         return;
                     }
                     else if (!string.IsNullOrEmpty(update.Message.Text))
                     {
                         _user.LastName = update.Message.Text;
-                        await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введите вашу организацию:", Buttons);
+                        await _messageSender.SendMessage(chatId, cancellationToken, "Пожалуйста, введите вашу организацию:", buttons);
                         _user.DataCollectStep = 3;
                         _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                     }
                     else
                     {
-                        await _messageSender.SendMessage(ChatId, cancellationToken, "Фамилия неверная, введите правильную фамилию", Buttons);
+                        await _messageSender.SendMessage(chatId, cancellationToken, "Фамилия неверная, введите правильную фамилию", buttons);
                     }
                     break;
                 case 3:
                     if (update.Message.Text == "🚩 К началу" || update.Message.Text == "/start")
                     {
-                        await HandleStartCommand(ChatId, cancellationToken);
-                        _user.IsCollectingData = false;
+                        await HandleStartCommand(chatId, cancellationToken);
                         _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                         return;
                     }
                     else if (regular.ValidateOrganization(update.Message.Text))
                     {
                         _user.Organization = update.Message.Text;
-                        await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введите ваш телефон:", Buttons);
+                        await _messageSender.SendMessage(chatId, cancellationToken, "Пожалуйста, введите ваш телефон:", buttons);
                         _user.DataCollectStep = 4;
                         _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                     }
                     else
                     {
-                        await _messageSender.SendMessage(ChatId, cancellationToken, "Организация неверная, введите правильную организацию", Buttons);
+                        await _messageSender.SendMessage(chatId, cancellationToken, "Организация неверная, введите правильную организацию", buttons);
                     }
                     break;
                 case 4:
                     if (update.Message.Text == "🚩 К началу" || update.Message.Text == "/start")
                     {
-                        await HandleStartCommand(ChatId, cancellationToken);
-                        _user.IsCollectingData = false;
+                        await HandleStartCommand(chatId, cancellationToken);
                         _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                         return;
                     }
                     else if (regular.ValidatePhone(update.Message.Text))
                     {
                         _user.Phone = update.Message.Text;                        
-                        await _messageSender.SendMessage(ChatId, cancellationToken, "Спасибо, ваши данные сохранены", null);
-                        await _messageSender.SendMessage(ChatId, cancellationToken,
-                            $"Имя: {_user.FirstName}\nФамилия: {_user.LastName}\nОрганизация: {_user.Organization}\nТелефон: {_user.Phone}\nId пользователя: {_user.Id}", null);                        
-                        _user.DataCollectStep = 5;                        
-                        if (!_askFlag)
-                        {
-                            _user.DataCollectStep = 6;
-                            await HandleCourseCommand(ChatId, cancellationToken);
-                        } 
-                        else
-                        {
-                            await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введите ваш запрос:", Buttons);
-                        }
+                        await _messageSender.SendMessage(chatId, cancellationToken, "Спасибо, ваши данные сохранены", null);
+                        await _messageSender.SendMessage(chatId, cancellationToken,
+                            $"Имя: {_user.FirstName}\nФамилия: {_user.LastName}\nОрганизация: {_user.Organization}\nТелефон: {_user.Phone}\nId пользователя: {_user.Id}", null);
+                        _user.DataCollectStep = 5;
                         _appDbUpdate.UserDbUpdate(_user, _dbConnection);
+
+
+                        if (_courseFlag)
+                        {
+                            _courseFlag = false;
+                            await HandleCourseCommand(chatId, cancellationToken);
+                        }
+                        if (_askFlag)
+                        {
+                            await _messageSender.SendMessage(chatId, cancellationToken, "Пожалуйста, введите ваш вопрос:", buttons);
+                        }   
                     }
                     else
                     {
-                        await _messageSender.SendMessage(ChatId, cancellationToken, "Телефон неверный, введите правильный номер телефона", Buttons);
+                        await _messageSender.SendMessage(chatId, cancellationToken, "Телефон неверный, введите правильный номер телефона", buttons);
                     }
 
                     break;
                 case 5:
-                    if (update.Message.Text == "🚩 К началу" || update.Message.Text == "/start")
+                    if (_askFlag)
                     {
-                        await HandleStartCommand(ChatId, cancellationToken);
-                        _user.IsCollectingData = false;
-                        _appDbUpdate.UserDbUpdate(_user, _dbConnection);
-                        return;
-                    }
-                    else if (!string.IsNullOrEmpty(update.Message.Text))
-                    {
-                        // Игнорируем текст кнопки или команду "/ask"
-                        if (update.Message.Text == "🙋‍♂️ Задать вопрос эксперту" || update.Message.Text == "/ask")
-                        {
-                            await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введите ваш запрос:", Buttons);
-                            return; // При вызове повторного вопроса прерываем выполнение, чтобы дождаться следующего ввода собственно вопроса
-                        }
-
-                        // Создаем новый вопрос  
-                        var question = new UserQuestion
-                        {
-                            BotUserId = _user.Id,
-                            QuestionText = update.Message.Text
-                        };
-
-                        using (var db = new LinqToDB.Data.DataConnection(ProviderName.PostgreSQL, _dbConnection))
-                        {
-                            var table = db.GetTable<UserQuestion>();                                                    
-
-                            // Вставляем вопрос в таблицу UserQuestion
-                            db.Insert(question);
-                        }                        
-
-                        Buttons.ResizeKeyboard = true;
-                        await _messageSender.SendMessage(ChatId, cancellationToken, $"Спасибо, ваш вопрос получен:\n{question.QuestionText}", Buttons);                        
-                        _user.DataCollectStep = 6;
                         _askFlag = false;
-                        _appDbUpdate.UserDbUpdate(_user, _dbConnection);
+                        await GetUserQuestion(update, cancellationToken);
                     }
-                    else
-                    {
-                        await _messageSender.SendMessage(ChatId, cancellationToken, "Введите не пустой вопрос", null);
-                    }
-
+                    _user.DataCollectStep = 6;
+                    _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                     break;
-                case 6:
-                    if (!_askFlag)
-                    {
-                        _user.IsCollectingData = false;
-                        _user.DataCollectStep = 6;
-                        await HandleCourseCommand(ChatId, cancellationToken);
-                    }
-                    break;
+                default:
+                    return;
             }
+        }
+
+        public static async Task GetUserQuestion (Telegram.Bot.Types.Update update, CancellationToken cancellationToken)
+        {
+            long chatId = update.Message.Chat.Id;
+            var regular = new RegularValidation();
+            var buttons = new ReplyKeyboardMarkup(
+                            new[] {
+                            new KeyboardButton("🚩 К началу")
+                            });
+            buttons.ResizeKeyboard = true;
+
+            // Создаем новый вопрос  
+            var question = new UserQuestion
+            {
+                BotUserId = _user.Id,
+                QuestionText = update.Message.Text
+            };
+
+            using (var db = new LinqToDB.Data.DataConnection(ProviderName.PostgreSQL, _dbConnection))
+            {
+                var table = db.GetTable<UserQuestion>();
+
+                // Вставляем вопрос в таблицу UserQuestion
+                db.Insert(question);
+            }
+
+            buttons.ResizeKeyboard = true;
+            await _messageSender.SendMessage(chatId, cancellationToken, $"Спасибо, ваш вопрос получен:\n{question.QuestionText}", buttons);            
+            _appDbUpdate.UserDbUpdate(_user, _dbConnection);
         }
 
         public static MemoryStream GenerateUserReport()
@@ -681,7 +665,7 @@ namespace HRProBot.Controllers
             return stream;
         }
 
-        private static async Task AnswerToUser(Update update, CancellationToken cancellationToken)
+        private static async Task AnswerToUser(Telegram.Bot.Types.Update update, CancellationToken cancellationToken)
         {
             long chatId = update.Message.Chat.Id;
             var buttons = new ReplyKeyboardMarkup(new[] { new KeyboardButton("🚩 К началу") });
@@ -826,7 +810,7 @@ namespace HRProBot.Controllers
             }
         }
 
-        private static async Task Mailing (Update update, CancellationToken cancellationToken, bool isTest)
+        private static async Task Mailing (Telegram.Bot.Types.Update update, CancellationToken cancellationToken, bool isTest)
         {
             try
             {
