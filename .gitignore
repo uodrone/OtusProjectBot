@@ -5,6 +5,8 @@
 
 # Игнорировать файл appsettings.json
 appsettings.json
+directum_credentials.json
+dronesaurum_credentials.json
 
 
 # User-specific files
