@@ -41,7 +41,6 @@ namespace HRProBot.Controllers
             ValueRange response = request.Execute();
             IList<IList<object>> responseValues = response.Values;
 
-
             return responseValues;
         }
     }
