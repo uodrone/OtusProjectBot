@@ -13,7 +13,12 @@
         MediaGroupId = mediaGroupId;
     }
 
-    // Добавляем файл в медиагруппу
+    // Метод проверяет, содержится ли файл с fileId в медиагруппе
+    public bool ContainsFile(string fileId)
+    {
+        return Files.Any(f => f.FileId == fileId);
+    }
+
     public void AddFile(long chatId, string fileId)
     {
         Files.Add((chatId, fileId));

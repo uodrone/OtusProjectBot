@@ -15,6 +15,7 @@ using System.Collections.Concurrent;
 using System.Threading;
 using HRProBot.Services;
 using NLog;
+using System.Diagnostics;
 
 namespace HRProBot.Controllers
 {
@@ -118,43 +119,85 @@ namespace HRProBot.Controllers
             if (!string.IsNullOrEmpty(update.Message.MediaGroupId))
             {
                 var mediaGroupId = update.Message.MediaGroupId;
+
+                // Проверяем, есть ли хотя бы одно фото
+                if (update.Message.Photo == null || !update.Message.Photo.Any())
+                {
+                    await _messageSender.SendMessage(update.Message.Chat.Id, cancellationToken, "Получено сообщение с медиагруппой, но фото не найдено.", null);
+                    return;
+                }
+
                 var photoFileId = update.Message.Photo.Last().FileId;
 
-                // Получаем или создаем экземпляр MediaGroup
                 var mediaGroup = _mediaGroups.GetOrAdd(mediaGroupId, id => new MediaGroup(id));
 
-                // Добавляем файл в медиагруппу
+                // Проверяем, не был ли уже добавлен этот файл
+                if (mediaGroup.ContainsFile(photoFileId))
+                {
+                    return;
+                }
+
                 mediaGroup.AddFile(update.Message.Chat.Id, photoFileId);
 
                 // Если есть текст сообщения, сохраняем его в медиагруппе
                 if (!string.IsNullOrEmpty(update.Message.Caption))
                 {
-                    mediaGroup.Caption = update.Message.Caption;
+                    if (mediaGroup.Caption.Length < 1024)
+                    {
+                        mediaGroup.Caption = update.Message.Caption;
+                    } 
+                    else
+                    {
+                        await _messageSender.SendMessage(me.Id, cancellationToken, "Текст слишком длинный", null);
+                    }
                 }
 
-                // Если медиагруппа еще не обрабатывается, запускаем фоновую задачу
+                // Если медиагруппа ещё не обрабатывается, запускаем фоновую задачу
                 if (!mediaGroup.IsProcessing)
                 {
                     mediaGroup.IsProcessing = true;
 
                     _ = Task.Run(async () =>
                     {
-                        while (true)
+                        try
                         {
-                            await Task.Delay(100); // Проверяем каждые 100 мс
+                            var timeout = TimeSpan.FromSeconds(5); // Время ожидания завершения медиагруппы
+                            var sw = Stopwatch.StartNew();
 
-                            // Если медиагруппа завершена, отправляем её
-                            if (mediaGroup.IsComplete())
+                            while (sw.Elapsed < timeout)
                             {
-                                await HandleMediaGroup(botClient, mediaGroup, cancellationToken);
+                                await Task.Delay(100, cancellationToken); // Проверяем каждые 100 мс
 
-                                // Удаляем медиагруппу из словаря после отправки
-                                _mediaGroups.TryRemove(mediaGroupId, out _);
-                                break;
+                                // Если медиагруппа завершена, отправляем её
+                                if (mediaGroup.IsComplete())
+                                {
+                                    await HandleMediaGroup(_botClient, mediaGroup, cancellationToken);
+                                    _mediaGroups.TryRemove(mediaGroupId, out _);
+                                    return;
+                                }
                             }
+
+                            // Если время истекло, но группа не завершена — отправляем то, что есть
+                            if (mediaGroup.Files.Count > 0)
+                            {
+                                await HandleMediaGroup(_botClient, mediaGroup, cancellationToken);
+                            }
+
+                            _mediaGroups.TryRemove(mediaGroupId, out _);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            // Задача была отменена — корректный выход
+                            _mediaGroups.TryRemove(mediaGroupId, out _);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.Error(ex, $"Ошибка при обработке медиагруппы в ответе пользователю ID: {mediaGroupId}");
+                            _mediaGroups.TryRemove(mediaGroupId, out _);
                         }
                     }, cancellationToken);
                 }
+
                 return;
             }
 
@@ -172,7 +215,7 @@ namespace HRProBot.Controllers
                 }
                 else
                 {
-                    await _messageSender.SendMessage(chatId, cancellationToken, "Неподдерживаемый тип сообщения. Используйте текстовые команды.", null);
+                    await _messageSender.SendMessage(me.Id, cancellationToken, "Неподдерживаемый тип сообщения. Используйте текстовые команды.", null);
                 }
             }
         }
@@ -878,8 +921,7 @@ namespace HRProBot.Controllers
 
                     // Сбрасываем состояние
                     _answerUserId = 0;
-                    _answerFlag = false;
-                    await _messageSender.SendMessage(chatId, cancellationToken, "Ответ отправлен пользователю.", buttons);
+                    _answerFlag = false;                    
                 }
             }
             catch (Exception ex)
