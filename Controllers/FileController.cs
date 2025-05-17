@@ -1,9 +1,11 @@
 ﻿using System.IO;
+using NLog;
 
 namespace HRProBot.Controllers
 {
     public class FileController
     {
+        private static Logger _logger = LogManager.GetCurrentClassLogger();
         public static async Task<string> SaveFileFromUrl(string fileUrl, string folderName)
         {
             try
@@ -28,7 +30,8 @@ namespace HRProBot.Controllers
             }
             catch (Exception ex)
             {
-                throw new Exception($"Ошибка при сохранении файла: {ex.Message}");
+                _logger.Error(ex, $"Ошибка при сохранении файла: {ex.Message}");
+                throw;
             }
         }
     }

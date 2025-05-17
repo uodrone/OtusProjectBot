@@ -8,12 +8,14 @@ using System.Threading;
 using System.Threading.Tasks;
 using HRProBot.Controllers;
 using System.Text.RegularExpressions;
+using NLog;
 
 namespace HRProBot.Services
 {
     public class MessageSender
     {
         private static ITelegramBotClient _botClient;
+        private static Logger _logger = LogManager.GetCurrentClassLogger();
 
         public MessageSender(ITelegramBotClient botClient)
         {
@@ -68,8 +70,7 @@ namespace HRProBot.Services
             }
             catch (Exception ex)
             {
-                ///<todo>Удолить перед публикаций на прод</todo>
-                await SendMessage(chatId, cancellationToken, $"Видео не может быть отправлено: {ex.Message}", buttons);
+                _logger.Error(ex, $"Видео-кружок не может быть отправлен: {ex.Message}");
             }
         }
 
@@ -86,8 +87,7 @@ namespace HRProBot.Services
             }
             catch (Exception ex)
             {
-                ///<todo>Удолить перед публикаций на прод</todo>
-                await SendMessage(chatId, cancellationToken, $"Видео не может быть отправлено: {ex.Message}", buttons);
+                _logger.Error(ex, $"Видео не может быть отправлено: {ex.Message}");
             }
         }
 
@@ -167,8 +167,7 @@ namespace HRProBot.Services
             }
             catch (Exception ex)
             {
-                ///<todo>Удолить перед публикаций на прод</todo>
-                await SendMessage(chatId, cancellationToken, "Не удалось отправить медиагруппу.", null);
+                _logger.Error(ex, $"Не удалось отправить медиагруппу: {ex.Message}");
             }
         }
 
@@ -213,31 +212,37 @@ namespace HRProBot.Services
             }
             catch (Exception ex)
             {
-                ///<todo>Удолить перед публикаций на прод</todo>
-                await SendMessage(chatId, cancellationToken, "Не удалось отправить изображение.", buttons);
+                _logger.Error(ex, $"Не удалось отправить изображение: {ex.Message}");
             }
         }
 
         public async Task SendMessage(long chatId, CancellationToken cancellationToken, string textMessage, ReplyKeyboardMarkup? buttons)
         {
-            ReplyKeyboardRemove removeKeyboard = new ReplyKeyboardRemove();
-            if (buttons == null)
+            try
             {
-                await _botClient.SendTextMessageAsync(
-                    chatId: chatId,
-                    text: textMessage,
-                    parseMode: ParseMode.Html,
-                    replyMarkup: removeKeyboard,
-                    cancellationToken: cancellationToken);
+                ReplyKeyboardRemove removeKeyboard = new ReplyKeyboardRemove();
+                if (buttons == null)
+                {
+                    await _botClient.SendTextMessageAsync(
+                        chatId: chatId,
+                        text: textMessage,
+                        parseMode: ParseMode.Html,
+                        replyMarkup: removeKeyboard,
+                        cancellationToken: cancellationToken);
+                }
+                else
+                {
+                    await _botClient.SendTextMessageAsync(
+                        chatId: chatId,
+                        text: textMessage,
+                        parseMode: ParseMode.Html,
+                        replyMarkup: buttons,
+                        cancellationToken: cancellationToken);
+                }
             }
-            else
+            catch (Exception ex)
             {
-                await _botClient.SendTextMessageAsync(
-                    chatId: chatId,
-                    text: textMessage,
-                    parseMode: ParseMode.Html,
-                    replyMarkup: buttons,
-                    cancellationToken: cancellationToken);
+                _logger.Error(ex, $"Не удалось отправить сообщение: {ex.Message}");
             }
         }
 

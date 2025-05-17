@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using System.Collections.Concurrent;
 using System.Threading;
 using HRProBot.Services;
+using NLog;
 
 namespace HRProBot.Controllers
 {
@@ -33,7 +34,7 @@ namespace HRProBot.Controllers
         private static bool _mailingFlag;
         private static MessageSender _messageSender;
         private static IOptionsSnapshot<AppSettings> _appSettings;
-
+        private static Logger _logger = LogManager.GetCurrentClassLogger();
         private static readonly ConcurrentDictionary<string, MediaGroup> _mediaGroups = new ConcurrentDictionary<string, MediaGroup>();
 
         public UpdateHandler(IOptionsSnapshot<AppSettings> appSettings, ITelegramBotClient botClient, string dbConnection)
@@ -56,7 +57,7 @@ namespace HRProBot.Controllers
 
         public async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
         {
-            // Игнорируем всё, кроме сообщений, и сообщения без отправителя
+            // Игнорируем сообщения без отправителя и вообще всё, кроме сообщений
             if (update.Type != UpdateType.Message || update.Message == null || update.Message.From == null)
             {
                 return; 
@@ -286,7 +287,7 @@ namespace HRProBot.Controllers
                 default:
                     var Buttons = new ReplyKeyboardMarkup(new[] { new KeyboardButton("🚩 К началу") });
                     Buttons.ResizeKeyboard = true;
-                    var Message = $"Попробуйте еще раз! Ник: {update.Message.From.Username}, Имя: {update.Message.From.FirstName}, id: {update.Message.From.Id} ";
+                    var Message = $"Неверная команда. Попробуйте еще раз!";
                     await _messageSender.SendMessage(ChatId, cancellationToken, Message, Buttons);
                     break;
             }
@@ -316,11 +317,13 @@ namespace HRProBot.Controllers
         /// <returns></returns>
         private static async Task HandleStartCommand(long chatId, CancellationToken cancellationToken)
         {
-            string message = _botMessagesData[1][3].ToString();
-            string imageUrl = _botMessagesData[1][4].ToString();
-            var buttons = new ReplyKeyboardMarkup(
-                new[]
-                {
+            try
+            {
+                string message = _botMessagesData[1][3].ToString();
+                string imageUrl = _botMessagesData[1][4].ToString();
+                var buttons = new ReplyKeyboardMarkup(
+                    new[]
+                    {
                     new[] {
                         new KeyboardButton("🔍 О системе HR Pro"),
                         new KeyboardButton("💪 Подробно о решениях системы"),
@@ -330,10 +333,15 @@ namespace HRProBot.Controllers
                         new KeyboardButton("📅 Подписаться на курс обучения"),
                         new KeyboardButton("🙋‍♂️ Задать вопрос эксперту")
                     }
-                });
-            buttons.ResizeKeyboard = true;
+                    });
+                buttons.ResizeKeyboard = true;
 
-            await _messageSender.SendPhotoWithCaption(chatId, cancellationToken, imageUrl, message, buttons);
+                await _messageSender.SendPhotoWithCaption(chatId, cancellationToken, imageUrl, message, buttons);
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, $"Ошибка получения данных стартового меню: {ex.Message}");
+            }
         }
         /// <summary>
         /// Обработчик записи на курсы
@@ -343,25 +351,32 @@ namespace HRProBot.Controllers
         /// <returns></returns>
         private static async Task HandleCourseCommand(long chatId, CancellationToken cancellationToken)
         {
-            string Message = _botMessagesData[2][3].ToString();
-            var Buttons = new ReplyKeyboardMarkup(
-                new[] {
-            new KeyboardButton("🚩 К началу")
-                });
-            Buttons.ResizeKeyboard = true;
-            DateTime date = DateTime.Now;
-            if (!_user.IsSubscribed)
+            try
             {
-                _user.IsSubscribed = true;
-                _user.DateStartSubscribe = date;
-                _appDbUpdate.UserDbUpdate(_user, _dbConnection);
-                await _messageSender.SendMessage(chatId, cancellationToken, Message, Buttons);
-                var courseController = new CourseController(_user, _botClient, _appSettings, _dbConnection);
-                courseController.StartSendingMaterials();
+                string Message = _botMessagesData[2][3].ToString();
+                var Buttons = new ReplyKeyboardMarkup(
+                    new[] {
+                        new KeyboardButton("🚩 К началу")
+                    });
+                Buttons.ResizeKeyboard = true;
+                DateTime date = DateTime.Now;
+                if (!_user.IsSubscribed)
+                {
+                    _user.IsSubscribed = true;
+                    _user.DateStartSubscribe = date;
+                    _appDbUpdate.UserDbUpdate(_user, _dbConnection);
+                    await _messageSender.SendMessage(chatId, cancellationToken, Message, Buttons);
+                    var courseController = new CourseController(_user, _botClient, _appSettings, _dbConnection);
+                    courseController.StartSendingMaterials();
+                }
+                else
+                {
+                    await _messageSender.SendMessage(chatId, cancellationToken, "Вы уже подписаны на курс. Обучающие материалы выходят каждую неделю. Следите за обновлениями", Buttons);
+                }
             }
-            else
+            catch (Exception ex)
             {
-                await _messageSender.SendMessage(chatId, cancellationToken, "Вы уже подписаны на курс. Обучающие материалы выходят каждую неделю. Следите за обновлениями", Buttons);
+                _logger.Error(ex, $"Ошибка получения данных о курсах: {ex.Message}");
             }
         }
         /// <summary>
@@ -372,16 +387,23 @@ namespace HRProBot.Controllers
         /// <returns></returns>
         private static async Task HandleExpertsCommand(long chatId, CancellationToken cancellationToken)
         {
-            string message = _botMessagesData[3][3].ToString();
-            string imagesUrl = _botMessagesData[3][4].ToString();
-            
-            var buttons = new ReplyKeyboardMarkup(
-                new[] {
+            try
+            {
+                string message = _botMessagesData[3][3].ToString();
+                string imagesUrl = _botMessagesData[3][4].ToString();
+
+                var buttons = new ReplyKeyboardMarkup(
+                    new[] {
                     new KeyboardButton("🚩 К началу"),
                     new KeyboardButton("🙋‍♂️ Задать вопрос эксперту")
-                });
-            buttons.ResizeKeyboard = true;
-            await _messageSender.SendPhotoWithCaption(chatId, cancellationToken, imagesUrl, message, buttons);
+                    });
+                buttons.ResizeKeyboard = true;
+                await _messageSender.SendPhotoWithCaption(chatId, cancellationToken, imagesUrl, message, buttons);
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, $"Ошибка получения данных об экспертах: {ex.Message}");
+            }
         }
         /// <summary>
         /// обработчик команды с информацией об HR Pro
@@ -391,14 +413,21 @@ namespace HRProBot.Controllers
         /// <returns></returns>
         private static async Task HandleAboutHrProCommand(long chatId, CancellationToken cancellationToken)
         {
-            string Message = _botMessagesData[4][3].ToString();
-            string imageUrl = _botMessagesData[4][4].ToString();
-            var Buttons = new ReplyKeyboardMarkup(
-                new[] {
+            try
+            {
+                string Message = _botMessagesData[4][3].ToString();
+                string imageUrl = _botMessagesData[4][4].ToString();
+                var Buttons = new ReplyKeyboardMarkup(
+                    new[] {
                     new KeyboardButton("🚩 К началу")
-                });
-            Buttons.ResizeKeyboard = true;            
-            await _messageSender.SendPhotoWithCaption(chatId, cancellationToken, imageUrl, Message, Buttons);
+                    });
+                Buttons.ResizeKeyboard = true;
+                await _messageSender.SendPhotoWithCaption(chatId, cancellationToken, imageUrl, Message, Buttons);
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, $"Ошибка получения данных об HR Pro: {ex.Message}");
+            }
         }
         /// <summary>
         /// обработчик команды с информацией о решениях HR Pro
@@ -408,17 +437,23 @@ namespace HRProBot.Controllers
         /// <returns></returns>
         private static async Task HandleAboutSolutionsCommand(long chatId, CancellationToken cancellationToken)
         {
-            string message = _botMessagesData[6][3].ToString();
-            string imagesUrl = _botMessagesData[6][4].ToString();
-            // Создаем список фоток из урлов
-            var mediaGroup = await _messageSender.ConvertImgStringToMediaListAsync(imagesUrl);
-            var Buttons = new ReplyKeyboardMarkup(
-                new[] {
+            try
+            {
+                string message = _botMessagesData[6][3].ToString();
+                string imagesUrl = _botMessagesData[6][4].ToString();
+                // Создаем список фоток из урлов
+                var mediaGroup = await _messageSender.ConvertImgStringToMediaListAsync(imagesUrl);
+                var Buttons = new ReplyKeyboardMarkup(
+                    new[] {
                     new KeyboardButton("🚩 К началу")
-                });
-            Buttons.ResizeKeyboard = true;            
-            await _messageSender.SendMediaGroupWithCaption(chatId, cancellationToken, mediaGroup, message, Buttons);
-            //await _messageSender.SendPhotoWithCaption(chatId, cancellationToken, imagesUrl, Message, Buttons);
+                    });
+                Buttons.ResizeKeyboard = true;
+                await _messageSender.SendMediaGroupWithCaption(chatId, cancellationToken, mediaGroup, message, Buttons);
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, $"Ошибка получения решений: {ex.Message}");
+            }
         }
 
         private static async Task GetUserData(Update update, CancellationToken cancellationToken)
@@ -889,7 +924,7 @@ namespace HRProBot.Controllers
                 }
             }
             catch (Exception ex) {
-                await _messageSender.SendMessage(update.Message.Chat.Id, cancellationToken, ex.Message, null);
+                _logger.Error(ex, $"Ошибка массовой рассылки: {ex.Message}");
             }
         }
 

@@ -7,12 +7,10 @@ namespace HRProBot.Controllers
 {
     public class HomeController : Controller
     {
-        private readonly ILogger<HomeController> _logger;
         private readonly IOptionsSnapshot<AppSettings> _appSettings;
 
-        public HomeController(ILogger<HomeController> logger, IOptionsSnapshot<AppSettings> appSettings)
+        public HomeController(IOptionsSnapshot<AppSettings> appSettings)
         {
-            _logger = logger;
             _appSettings = appSettings;
         }
 
