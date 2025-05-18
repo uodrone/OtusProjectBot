@@ -6,6 +6,7 @@ using HRProBot.Models;
 using Microsoft.Extensions.Options;
 using System.Text;
 using HRProBot.Interfaces;
+using NLog;
 
 namespace HRProBot.Controllers
 {
@@ -13,6 +14,7 @@ namespace HRProBot.Controllers
     {
         static string _spreadsheetId;
         static GoogleCredential _credential;
+        private static Logger _logger = LogManager.GetCurrentClassLogger();
 
         public GoogleSheetsController(IOptionsSnapshot<AppSettings> appSettings) {
             // ID Google таблицы (это часть URL таблицы)
@@ -28,21 +30,28 @@ namespace HRProBot.Controllers
         }
 
         public IList<IList<object>> GetData(string range) {
-            // Создаем сервис для работы с Google Sheets API
-            var service = new SheetsService(new BaseClientService.Initializer()
+            try
             {
-                HttpClientInitializer = _credential,
-                ApplicationName = "Google Sheets API HRProBot",
-            });
+                // Создаем сервис для работы с Google Sheets API
+                var service = new SheetsService(new BaseClientService.Initializer()
+                {
+                    HttpClientInitializer = _credential,
+                    ApplicationName = "Google Sheets API HRProBot",
+                });
 
-            // Запрос данных из таблицы
-            SpreadsheetsResource.ValuesResource.GetRequest request = service.Spreadsheets.Values.Get(_spreadsheetId, range);
+                // Запрос данных из таблицы
+                SpreadsheetsResource.ValuesResource.GetRequest request = service.Spreadsheets.Values.Get(_spreadsheetId, range);
 
-            ValueRange response = request.Execute();
-            IList<IList<object>> responseValues = response.Values;
+                ValueRange response = request.Execute();
+                IList<IList<object>> responseValues = response.Values;
 
 
-            return responseValues;
+                return responseValues;
+            }
+            catch (Exception ex)
+            {
+                throw;
+            }
         }
     }
 }

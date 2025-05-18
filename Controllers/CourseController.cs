@@ -56,73 +56,78 @@ namespace HRProBot.Controllers
             buttons.ResizeKeyboard = true;
             var appDbUpdate = new AppDBUpdate();
 
-            if (_user.IsSubscribed && _user.DateStartSubscribe <= DateTime.Now)
+            try
             {
-                switch (_user.CurrentCourseStep)
+                if (_user.IsSubscribed && _user.DateStartSubscribe <= DateTime.Now)
                 {
-                    case 1:
-                        courseMessage = _botCourseData[1][1].ToString();
-                        courseImg = _botCourseData[1][2].ToString();
-                        appDbUpdate.UserDbUpdate(_user, _dbConnection);
-                        _user.CurrentCourseStep++;
-                        break;
-                    case 2:
-                        courseMessage = _botCourseData[2][1].ToString();
-                        courseImg = _botCourseData[2][2].ToString();
-                        appDbUpdate.UserDbUpdate(_user, _dbConnection);
-                        _user.CurrentCourseStep++;
-                        break;
-                    case 3:
-                        courseMessage = _botCourseData[3][1].ToString();
-                        courseImg = _botCourseData[3][2].ToString();
-                        appDbUpdate.UserDbUpdate(_user, _dbConnection);
-                        _user.CurrentCourseStep++;
-                        break;
-                    case 4:
-                        courseMessage = _botCourseData[4][1].ToString();
-                        courseImg = _botCourseData[4][2].ToString();
-                        appDbUpdate.UserDbUpdate(_user, _dbConnection);
-                        _user.CurrentCourseStep++;
-                        break;
-                    case 5:
-                        courseMessage = _botCourseData[5][1].ToString();
-                        courseImg = _botCourseData[5][2].ToString();
-                        appDbUpdate.UserDbUpdate(_user, _dbConnection);
-                        _user.CurrentCourseStep++;
-                        break;
-                    case 6:
-                        courseMessage = _botCourseData[6][1].ToString();
-                        courseImg = _botCourseData[6][2].ToString();
-                        appDbUpdate.UserDbUpdate(_user, _dbConnection);
-                        StopSendingMaterials();
-                        break;
-                }
-
-                if (courseMessage != null)
-                {
-                    if (string.IsNullOrEmpty(courseImg))
+                    switch (_user.CurrentCourseStep)
                     {
-                        await _messageSender.SendMessage(_user.Id, _cantellationToken, courseMessage, buttons);
+                        case 1:
+                            courseMessage = _botCourseData[1][1].ToString();
+                            courseImg = _botCourseData[1][2].ToString();
+                            appDbUpdate.UserDbUpdate(_user, _dbConnection);
+                            _user.CurrentCourseStep++;
+                            break;
+                        case 2:
+                            courseMessage = _botCourseData[2][1].ToString();
+                            courseImg = _botCourseData[2][2].ToString();
+                            appDbUpdate.UserDbUpdate(_user, _dbConnection);
+                            _user.CurrentCourseStep++;
+                            break;
+                        case 3:
+                            courseMessage = _botCourseData[3][1].ToString();
+                            courseImg = _botCourseData[3][2].ToString();
+                            appDbUpdate.UserDbUpdate(_user, _dbConnection);
+                            _user.CurrentCourseStep++;
+                            break;
+                        case 4:
+                            courseMessage = _botCourseData[4][1].ToString();
+                            courseImg = _botCourseData[4][2].ToString();
+                            appDbUpdate.UserDbUpdate(_user, _dbConnection);
+                            _user.CurrentCourseStep++;
+                            break;
+                        case 5:
+                            courseMessage = _botCourseData[5][1].ToString();
+                            courseImg = _botCourseData[5][2].ToString();
+                            appDbUpdate.UserDbUpdate(_user, _dbConnection);
+                            _user.CurrentCourseStep++;
+                            break;
+                        case 6:
+                            courseMessage = _botCourseData[6][1].ToString();
+                            courseImg = _botCourseData[6][2].ToString();
+                            appDbUpdate.UserDbUpdate(_user, _dbConnection);
+                            StopSendingMaterials();
+                            break;
                     }
-                    else
+
+                    if (courseMessage != null)
                     {
-                        var mediaGroup = await _messageSender.ConvertImgStringToMediaListAsync(courseImg);
-                        if (mediaGroup.Count > 1)
+                        if (string.IsNullOrEmpty(courseImg))
                         {
-                            await _messageSender.SendMediaGroupWithCaption(_user.Id, _cantellationToken, mediaGroup, courseMessage, buttons);
+                            await _messageSender.SendMessage(_user.Id, _cantellationToken, courseMessage, buttons);
                         }
                         else
                         {
-                            await _messageSender.SendPhotoWithCaption(_user.Id, _cantellationToken, courseImg, courseMessage, buttons);
+                            var mediaGroup = await _messageSender.ConvertImgStringToMediaListAsync(courseImg);
+                            if (mediaGroup.Count > 1)
+                            {
+                                await _messageSender.SendMediaGroupWithCaption(_user.Id, _cantellationToken, mediaGroup, courseMessage, buttons);
+                            }
+                            else
+                            {
+                                await _messageSender.SendPhotoWithCaption(_user.Id, _cantellationToken, courseImg, courseMessage, buttons);
+                            }
                         }
                     }
-
-                    
                 }
-            } 
-            else
+                else
+                {
+                    await _botClient.SendTextMessageAsync(_user.Id, "Ошибка подписки");
+                }
+            }
+            catch (Exception ex)
             {
-                await _botClient.SendTextMessageAsync(_user.Id, "Ошибка подписки");
+                throw;
             }
         }
 

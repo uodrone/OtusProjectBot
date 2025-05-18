@@ -40,15 +40,21 @@ namespace HRProBot.Controllers
 
         public UpdateHandler(IOptionsSnapshot<AppSettings> appSettings, ITelegramBotClient botClient, string dbConnection)
         {
-            _appSettings = appSettings;
-            _administrators = _appSettings.Value.TlgBotAdministrators.Split(';');
-            _googleSheets = new GoogleSheetsController(_appSettings);
-            _botClient = botClient;
-            _dbConnection = dbConnection;
-            _botMessagesData = _googleSheets.GetData(_appSettings.Value.GoogleSheetsRange);
-            _botMailingData = _googleSheets.GetData(_appSettings.Value.GoogleSheetsMailing);
-            _messageSender = new MessageSender(botClient);
-            var cts = new CancellationTokenSource(); // прерыватель соединения с ботом
+            try
+            {
+                _appSettings = appSettings;
+                _administrators = _appSettings.Value.TlgBotAdministrators.Split(';');
+                _googleSheets = new GoogleSheetsController(_appSettings);
+                _botClient = botClient;
+                _dbConnection = dbConnection;
+                _botMessagesData = _googleSheets.GetData(_appSettings.Value.GoogleSheetsRange);
+                _botMailingData = _googleSheets.GetData(_appSettings.Value.GoogleSheetsMailing);
+                _messageSender = new MessageSender(botClient);
+                var cts = new CancellationTokenSource(); // прерыватель соединения с ботом
+            }
+            catch (Exception ex) {
+                _logger.Error(ex, $"Ошибка подключения к сервису: {ex.Message}");
+            }
         }
 
         public async Task HandleErrorAsync(ITelegramBotClient botClient, Exception exception, HandleErrorSource source, CancellationToken cancellationToken)
