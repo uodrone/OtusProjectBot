@@ -704,7 +704,7 @@ namespace HRProBot.Controllers
                         }                        
 
                         buttons.ResizeKeyboard = true;
-                        await _messageSender.SendMessage(ChatId, cancellationToken, $"Спасибо, ваш вопрос получен:", buttons);                        
+                        await _messageSender.SendMessage(ChatId, cancellationToken, $"Спасибо, ваш вопрос получен.", buttons);                        
                         _user.DataCollectStep = 6;
                         _askFlag = false;
                         _appDbUpdate.UserDbUpdate(_user, _dbConnection);
