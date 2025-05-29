@@ -685,7 +685,8 @@ namespace HRProBot.Controllers
                         if (update.Message.Text == "🙋‍♂️ Задать вопрос эксперту" || update.Message.Text == "/ask")
                         {
                             await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введите ваш запрос:", buttons);
-                            return; // При вызове повторного вопроса прерываем выполнение, чтобы дождаться следующего ввода собственно вопроса
+                            // При вызове повторного вопроса прерываем выполнение, чтобы дождаться следующего ввода собственно вопроса
+                            return;
                         }
 
                         // Создаем новый вопрос  
@@ -704,7 +705,7 @@ namespace HRProBot.Controllers
                         }                        
 
                         buttons.ResizeKeyboard = true;
-                        await _messageSender.SendMessage(ChatId, cancellationToken, $"Спасибо, ваш вопрос получен.", buttons);                        
+                        await _messageSender.SendMessage(ChatId, cancellationToken, $"Спасибо, ваш вопрос получен:\nМожешь задать новый или перейти к другим разделам 🔽", buttons);                        
                         _user.DataCollectStep = 6;
                         _askFlag = false;
                         _appDbUpdate.UserDbUpdate(_user, _dbConnection);

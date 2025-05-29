@@ -103,7 +103,6 @@ namespace HRProBot.Controllers
                             courseMessage = _botCourseData[7][1].ToString();
                             courseImg = _botCourseData[7][2].ToString();
                             appDbUpdate.UserDbUpdate(_user, _dbConnection);
-                            _user.CurrentCourseStep++;
                             StopSendingMaterials();
                             break;
                     }
