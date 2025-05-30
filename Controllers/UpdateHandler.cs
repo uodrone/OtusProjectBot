@@ -540,9 +540,17 @@ namespace HRProBot.Controllers
             var regular = new RegularValidation();
             var buttons = new ReplyKeyboardMarkup(
                             new[] {
-                            new KeyboardButton("🚩 К началу")
+                                new KeyboardButton("🚩 К началу")
                             });
             buttons.ResizeKeyboard = true;
+            var buttonsWithContact = new ReplyKeyboardMarkup(
+                            new[] {
+                                new KeyboardButton[] {
+                                    KeyboardButton.WithRequestContact("📱 Отправить номер телефона"),
+                                    new KeyboardButton("🚩 К началу")
+                                }
+                            });
+            buttonsWithContact.ResizeKeyboard = true;
 
             switch (_user.DataCollectStep)
             {
@@ -633,7 +641,7 @@ namespace HRProBot.Controllers
                     else if (regular.ValidateOrganization(update.Message.Text))
                     {
                         _user.Organization = update.Message.Text;
-                        await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введи номер телефона:", buttons);
+                        await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введи номер телефона:", buttonsWithContact);
                         _user.DataCollectStep = 4;
                         _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                     }
@@ -652,8 +660,26 @@ namespace HRProBot.Controllers
                     }
                     else if (update.Message.Text == "📅 Подписаться на курс обучения" || update.Message.Text == "🙋‍♂️ Задать вопрос эксперту" || update.Message.Text == "/ask")
                     {
-                        await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введи номер телефона:", buttons);
+                        await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введи номер телефона:", buttonsWithContact);
                         return;
+                    }
+                    else if (regular.ValidatePhone(update.Message.Contact.PhoneNumber))
+                    {
+                        _user.Phone = update.Message.Contact.PhoneNumber;
+                        await _messageSender.SendMessage(ChatId, cancellationToken, "Спасибо, данные сохранены", null);
+                        await _messageSender.SendMessage(ChatId, cancellationToken,
+                            $"Имя: {_user.FirstName}\nФамилия: {_user.LastName}\nОрганизация: {_user.Organization}\nТелефон: {_user.Phone}", null);
+                        _user.DataCollectStep = 5;
+                        if (!_askFlag)
+                        {
+                            _user.DataCollectStep = 6;
+                            await HandleCourseCommand(ChatId, cancellationToken);
+                        }
+                        else
+                        {
+                            await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введи вопрос эксперту:", buttons);
+                        }
+                        _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                     }
                     else if (regular.ValidatePhone(update.Message.Text))
                     {
@@ -672,10 +698,10 @@ namespace HRProBot.Controllers
                             await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введи вопрос эксперту:", buttons);
                         }
                         _appDbUpdate.UserDbUpdate(_user, _dbConnection);
-                    }
+                    }                    
                     else
                     {
-                        await _messageSender.SendMessage(ChatId, cancellationToken, "Телефон неверный, введи правильный номер телефона", buttons);
+                        await _messageSender.SendMessage(ChatId, cancellationToken, "Телефон неверный, введи правильный номер телефона", buttonsWithContact);
                     }
 
                     break;
