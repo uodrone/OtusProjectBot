@@ -94,10 +94,6 @@ namespace HRProBot.Services
         /// <summary>
         /// Отправляет медиагруппу с подписью. Если подпись содержит HTML или длиннее 1024 символов — отправляется отдельным сообщением.
         /// </summary>
-        /// <summary>
-        /// Отправляет медиагруппу с подписью.
-        /// Если подпись содержит HTML-теги или длиннее 1024 символов — отправляется отдельным сообщением.
-        /// </summary>
         public async Task SendMediaGroupWithCaption(
             long chatId,
             CancellationToken cancellationToken,
