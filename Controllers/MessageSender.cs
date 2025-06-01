@@ -324,5 +324,31 @@ namespace HRProBot.Services
 
             return html;
         }
+
+        public ReplyKeyboardMarkup GetStandardButtons()
+        {
+            var buttons = new ReplyKeyboardMarkup(
+                    new[]
+                    {
+                        new[] {
+                            new KeyboardButton("🔍 О системе HR Pro"),
+                            new KeyboardButton("💪 О решениях"),
+                            new KeyboardButton("🤵‍♂️ Об экспертах")
+                        },
+                        new[] {
+                            new KeyboardButton("📅 Подписаться на курс обучения"),
+                            new KeyboardButton("🙋‍♂️ Задать вопрос эксперту")
+                        }
+                    });
+            buttons.ResizeKeyboard = true;
+            return buttons;
+        }
+
+        public ReplyKeyboardMarkup GetStartButton()
+        {
+            var button = new ReplyKeyboardMarkup(new KeyboardButton("🚩 К началу"));
+            button.ResizeKeyboard = true;
+            return button;
+        }
     }
 }

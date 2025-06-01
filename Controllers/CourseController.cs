@@ -20,6 +20,8 @@ namespace HRProBot.Controllers
         private static GoogleSheetsController _googleSheets;
         private static IList<IList<object>> _botCourseData;
         private static MessageSender _messageSender;
+        private static ReplyKeyboardMarkup _standardButtons;
+        private static ReplyKeyboardMarkup _startButton;
         private Timer _timer;
         private string _dbConnection;
         private CancellationToken _cantellationToken;
@@ -32,6 +34,8 @@ namespace HRProBot.Controllers
             _googleSheets = new GoogleSheetsController(_appSettings);
             _botCourseData = _googleSheets.GetData(_appSettings.Value.GoogleSheetsCourseRange);
             _messageSender = new MessageSender(botClient);
+            _standardButtons = _messageSender.GetStandardButtons();
+            _startButton = _messageSender.GetStartButton();
             _dbConnection = dbConnection;
             _cantellationToken = new CancellationTokenSource().Token;
         }
@@ -40,20 +44,6 @@ namespace HRProBot.Controllers
         {
             string courseMessage = null;
             string courseImg = null;
-            var buttons = new ReplyKeyboardMarkup(
-                new[]
-                {
-                    new[] {
-                        new KeyboardButton("🔍 О системе HR Pro"),
-                        new KeyboardButton("💪 Подробно о решениях системы"),
-                        new KeyboardButton("🤵‍♂️ Узнать об экспертах")
-                    },
-                    new[] {
-                        new KeyboardButton("📅 Подписаться на курс обучения"),
-                        new KeyboardButton("🙋‍♂️ Задать вопрос эксперту")
-                    }
-                });
-            buttons.ResizeKeyboard = true;
             var appDbUpdate = new AppDBUpdate();
 
             try
@@ -111,18 +101,18 @@ namespace HRProBot.Controllers
                     {
                         if (string.IsNullOrEmpty(courseImg))
                         {
-                            await _messageSender.SendMessage(_user.Id, _cantellationToken, courseMessage, buttons);
+                            await _messageSender.SendMessage(_user.Id, _cantellationToken, courseMessage, _standardButtons);
                         }
                         else
                         {
                             var mediaGroup = await _messageSender.ConvertImgStringToMediaListAsync(courseImg);
                             if (mediaGroup.Count > 1)
                             {
-                                await _messageSender.SendMediaGroupWithCaption(_user.Id, _cantellationToken, mediaGroup, courseMessage, buttons);
+                                await _messageSender.SendMediaGroupWithCaption(_user.Id, _cantellationToken, mediaGroup, courseMessage, _standardButtons);
                             }
                             else
                             {
-                                await _messageSender.SendPhotoWithCaption(_user.Id, _cantellationToken, courseImg, courseMessage, buttons);
+                                await _messageSender.SendPhotoWithCaption(_user.Id, _cantellationToken, courseImg, courseMessage, _standardButtons);
                             }
                         }
                     }
