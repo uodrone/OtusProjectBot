@@ -23,7 +23,7 @@ namespace HRProBot.Controllers
             _tlgBotToken = appSettings.Value.TlgBotToken;
             _botClient = new TelegramBotClient(_tlgBotToken);
             _dbConnection = appSettings.Value.DBConnection;
-            var cts = new CancellationTokenSource(); // прерыватель соединения с ботом
+            var cts = new CancellationTokenSource();
             var updateHandler = new UpdateHandler(appSettings, _botClient, _dbConnection);            
 
 

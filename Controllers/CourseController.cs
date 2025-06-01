@@ -96,6 +96,13 @@ namespace HRProBot.Controllers
                             courseMessage = _botCourseData[6][1].ToString();
                             courseImg = _botCourseData[6][2].ToString();
                             appDbUpdate.UserDbUpdate(_user, _dbConnection);
+                            _user.CurrentCourseStep++;
+                            _timer.Change(TimeSpan.Zero, TimeSpan.FromMilliseconds(0));
+                            break;
+                        case 7:
+                            courseMessage = _botCourseData[7][1].ToString();
+                            courseImg = _botCourseData[7][2].ToString();
+                            appDbUpdate.UserDbUpdate(_user, _dbConnection);
                             StopSendingMaterials();
                             break;
                     }
@@ -137,7 +144,7 @@ namespace HRProBot.Controllers
             _timer = new Timer(SendTrainingCourseMessage, null, TimeSpan.Zero, TimeSpan.FromSeconds(7));
         }
 
-        public void StopSendingMaterials()
+        public async void StopSendingMaterials()
         {
             // Останавливаем таймер
             _timer?.Change(Timeout.Infinite, 0);
