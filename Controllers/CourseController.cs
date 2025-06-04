@@ -131,7 +131,7 @@ namespace HRProBot.Controllers
         public void StartSendingMaterials()
         {
             // Запускаем таймер с интервалом 7 секунд
-            _timer = new Timer(SendTrainingCourseMessage, null, TimeSpan.Zero, TimeSpan.FromSeconds(7));
+            _timer = new Timer(SendTrainingCourseMessage, null, TimeSpan.Zero, TimeSpan.FromDays(7));
         }
 
         public async void StopSendingMaterials()
