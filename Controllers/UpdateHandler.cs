@@ -501,7 +501,7 @@ namespace HRProBot.Controllers
                         return;
                     }
                     
-                    await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введите ваше имя:", _startButton);
+                    await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введи свое имя:", _startButton);
                     _user.DataCollectStep = 1;
                     _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                     break;
@@ -601,7 +601,7 @@ namespace HRProBot.Controllers
                         await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введи номер телефона:", buttonsWithContact);
                         return;
                     }
-                    else if (regular.ValidatePhone(update.Message.Contact.PhoneNumber))
+                    else if (update.Message.Contact != null && regular.ValidatePhone(update.Message.Contact.PhoneNumber))
                     {
                         _user.Phone = update.Message.Contact.PhoneNumber;
                         await _messageSender.SendMessage(ChatId, cancellationToken, "Спасибо, данные сохранены", null);
