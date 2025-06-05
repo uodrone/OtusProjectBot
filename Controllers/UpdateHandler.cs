@@ -181,6 +181,7 @@ namespace HRProBot.Controllers
                                 if (mediaGroup.IsComplete())
                                 {
                                     await HandleMediaGroup(_botClient, mediaGroup, cancellationToken);
+                                    _answerUserId = 0;
                                     _mediaGroups.TryRemove(mediaGroupId, out _);
                                     return;
                                 }
@@ -244,7 +245,7 @@ namespace HRProBot.Controllers
 
             // Отправляем медиагруппу
             await botClient.SendMediaGroupAsync(
-                chatId: mediaGroup.Files.First().ChatId,
+                chatId: _answerUserId,
                 media: mediaGroupToSend,
                 cancellationToken: cancellationToken);
         }
@@ -406,7 +407,7 @@ namespace HRProBot.Controllers
                 }
                 else
                 {
-                    await _messageSender.SendMessage(chatId, cancellationToken, "Вы уже подписаны на курс. Обучающие материалы выходят каждую неделю. Следите за обновлениями", _startButton);
+                    await _messageSender.SendMessage(chatId, cancellationToken, "Ты уже подписан(а) на курс. Обучающие материалы выходят каждую неделю. Следи за обновлениями", _startButton);
                 }
             }
             catch (Exception ex)
@@ -921,10 +922,12 @@ namespace HRProBot.Controllers
                             // Отправляем только текст
                             await _messageSender.SendMessage(_answerUserId, cancellationToken, answerText, _startButton);
                         }
+
+                        // Сбрасываем состояние
+                        _answerUserId = 0;
                     }
 
-                    // Сбрасываем состояние
-                    _answerUserId = 0;
+                    
                     _answerFlag = false;                    
                 }
             }
