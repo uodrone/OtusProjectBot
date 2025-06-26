@@ -340,6 +340,11 @@ namespace HRProBot.Controllers
                     }
                     break;
                 default:
+                    if (_user.IsVotingForCourse && IsRating(update.Message.Text))
+                    {
+                        await HandleCourseRating(update, cancellationToken);
+                        return;
+                    }
                     var Buttons = new ReplyKeyboardMarkup(new[] { new KeyboardButton("🚩 К началу") });
                     Buttons.ResizeKeyboard = true;
                     var Message = $"Неверная команда. Попробуйте еще раз!";
@@ -675,7 +680,11 @@ namespace HRProBot.Controllers
 
                             // Вставляем вопрос в таблицу UserQuestion
                             db.Insert(question);
-                        }                        
+                        }
+
+                        foreach (string admin in _administrators) {
+                            await _messageSender.SendMessage(Int64.Parse(admin), cancellationToken, $"Новый вопрос от пользователя {_user.UserName} ({_user.Id}): {question.QuestionText}", _standardButtons);
+                        }
 
                         await _messageSender.SendMessage(ChatId, cancellationToken, $"Спасибо, вопрос получен!\nМожешь задать новый или перейти к другим разделам 🔽", _standardButtons);                        
                         _user.DataCollectStep = 6;
@@ -717,9 +726,10 @@ namespace HRProBot.Controllers
             worksheet.Cells[1, 9].Value = "Подписан на курс?";
             worksheet.Cells[1, 10].Value = "Дата подписки на курс";
             worksheet.Cells[1, 11].Value = "Этап отправки курсов";
+            worksheet.Cells[1, 12].Value = "Итоговая оценка";
 
             // Стиль для заголовков
-            using (var range = worksheet.Cells[1, 1, 1, 11])
+            using (var range = worksheet.Cells[1, 1, 1, 12])
             {
                 range.Style.Font.Bold = true;
                 range.Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
@@ -727,7 +737,7 @@ namespace HRProBot.Controllers
             }
 
             // Включаем фильтры для первой строки
-            worksheet.Cells[1, 1, 1, 11].AutoFilter = true;
+            worksheet.Cells[1, 1, 1, 12].AutoFilter = true;
 
             using (var db = new LinqToDB.Data.DataConnection(ProviderName.PostgreSQL, _dbConnection))
             {
@@ -765,6 +775,7 @@ namespace HRProBot.Controllers
                     worksheet.Cells[row, 9].Value = user.IsSubscribed ? "Yes" : "No";
                     worksheet.Cells[row, 10].Value = user.DateStartSubscribe?.ToString("dd.MM.yyyy");
                     worksheet.Cells[row, 11].Value = user.CurrentCourseStep;
+                    worksheet.Cells[row, 12].Value = user.CourseAssesment;
 
                     // Включаем перенос текста для ячеек с вопросами и ответами
                     worksheet.Cells[row, 7].Style.WrapText = true; // Вопросы
@@ -993,6 +1004,44 @@ namespace HRProBot.Controllers
             {
                 var table = db.GetTable<UserAnswer>();
                 db.Insert(new UserAnswer { BotUserId = userId, AnswerText = answerText });
+            }
+        }
+
+        private static bool IsRating(string text)
+        {
+            return text switch
+            {
+                "1️⃣" or "2️⃣" or "3️⃣" or "4️⃣" or "5️⃣" => true,
+                _ => false
+            };
+        }
+
+        private async Task HandleCourseRating(Update update, CancellationToken cancellationToken)
+        {
+            var chatId = update.Message.Chat.Id;
+
+            int rating = update.Message.Text switch
+            {
+                "1️⃣" => 1,
+                "2️⃣" => 2,
+                "3️⃣" => 3,
+                "4️⃣" => 4,
+                "5️⃣" => 5,
+                _ => 0
+            };
+
+            if (rating > 0)
+            {
+                _user.CourseAssesment = rating;
+                _user.IsVotingForCourse = false; // Выключаем флаг
+                _appDbUpdate.UserDbUpdate(_user, _dbConnection);
+
+                await _messageSender.SendMessage(chatId, cancellationToken, _botMessagesData[9][3].ToString(), _standardButtons);
+            }
+            else
+            {
+                await _messageSender.SendMessage(chatId, cancellationToken,
+                    "Пожалуйста, выбери оценку от 1️⃣ до 5️⃣.", null);
             }
         }
     }

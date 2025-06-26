@@ -1,11 +1,13 @@
 ﻿using HRProBot.Models;
 using LinqToDB;
+using NLog;
 using Telegram.Bot;
 
 namespace HRProBot.Controllers
 {
     public class AppDBUpdate
     {
+        private static Logger _logger = LogManager.GetCurrentClassLogger();
         /// <summary>
         /// Обновляет запись в таблице базы данных.
         /// </summary>
@@ -14,20 +16,27 @@ namespace HRProBot.Controllers
         /// <param name="dbConnection">Строка подключения к базе данных.</param>
         public void UserDbUpdate<T>(T entity, string dbConnection) where T : class
         {
-            using (var db = new LinqToDB.Data.DataConnection(ProviderName.PostgreSQL, dbConnection))
+            try
             {
-                // Получаем первичный ключ сущности
-                var primaryKey = GetPrimaryKey(db, entity);
-
-                // Ищем запись в таблице по первичному ключу
-                var existingEntity = db.GetTable<T>().FirstOrDefault(primaryKey);
-
-                if (existingEntity != null)
+                using (var db = new LinqToDB.Data.DataConnection(ProviderName.PostgreSQL, dbConnection))
                 {
-                    // Обновляем запись
-                    db.Update(entity);
+                    // Получаем первичный ключ сущности
+                    var primaryKey = GetPrimaryKey(db, entity);
+
+                    // Ищем запись в таблице по первичному ключу
+                    var existingEntity = db.GetTable<T>().FirstOrDefault(primaryKey);
+
+                    if (existingEntity != null)
+                    {
+                        // Обновляем запись
+                        db.Update(entity);
+                    }
                 }
             }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, $"Ошибка обновления БД: {ex.Message}");
+            }            
         }
 
         /// <summary>

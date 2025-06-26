@@ -39,6 +39,12 @@ namespace HRProBot.Models
         [Column(Name = "CurrentCourseStep")]
         public int CurrentCourseStep { get; set; } = 1;
 
+        [Column(Name = "CourseAssesment")]
+        public int CourseAssesment { get; set; } = 0;
+
+        [Column(Name = "IsVotingForCourse")]
+        public bool IsVotingForCourse { get; set; } = false;
+
         // Навигационное свойство для вопросов
         [Association(ThisKey = nameof(Id), OtherKey = nameof(UserQuestion.BotUserId))]
         public List<UserQuestion> Questions { get; set; } = new List<UserQuestion>();

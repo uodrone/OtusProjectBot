@@ -45,6 +45,7 @@ namespace HRProBot.Controllers
             string courseMessage = null;
             string courseImg = null;
             var appDbUpdate = new AppDBUpdate();
+            var buttons = _standardButtons;
 
             try
             {
@@ -92,6 +93,17 @@ namespace HRProBot.Controllers
                         case 7:
                             courseMessage = _botCourseData[7][1].ToString();
                             courseImg = _botCourseData[7][2].ToString();
+                            buttons = new ReplyKeyboardMarkup(
+                                        new[] {
+                                            new KeyboardButton("5️⃣"),
+                                            new KeyboardButton("4️⃣"),
+                                            new KeyboardButton("3️⃣"),
+                                            new KeyboardButton("2️⃣"),
+                                            new KeyboardButton("1️⃣")
+                                        });
+                            buttons.ResizeKeyboard = true;
+                            // Активируем флаг голосования
+                            _user.IsVotingForCourse = true;
                             appDbUpdate.UserDbUpdate(_user, _dbConnection);
                             StopSendingMaterials();
                             break;
@@ -108,11 +120,11 @@ namespace HRProBot.Controllers
                             var mediaGroup = await _messageSender.ConvertImgStringToMediaListAsync(courseImg);
                             if (mediaGroup.Count > 1)
                             {
-                                await _messageSender.SendMediaGroupWithCaption(_user.Id, _cantellationToken, mediaGroup, courseMessage, _standardButtons);
+                                await _messageSender.SendMediaGroupWithCaption(_user.Id, _cantellationToken, mediaGroup, courseMessage, buttons);
                             }
                             else
                             {
-                                await _messageSender.SendPhotoWithCaption(_user.Id, _cantellationToken, courseImg, courseMessage, _standardButtons);
+                                await _messageSender.SendPhotoWithCaption(_user.Id, _cantellationToken, courseImg, courseMessage, buttons);
                             }
                         }
                     }
