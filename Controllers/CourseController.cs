@@ -19,6 +19,7 @@ namespace HRProBot.Controllers
         private static IOptionsSnapshot<AppSettings> _appSettings;
         private static GoogleSheetsController _googleSheets;
         private static IList<IList<object>> _botCourseData;
+        private static IList<IList<object>> _botMessagesData;
         private static MessageSender _messageSender;
         private static ReplyKeyboardMarkup _standardButtons;
         private static ReplyKeyboardMarkup _startButton;
@@ -32,6 +33,7 @@ namespace HRProBot.Controllers
             _botClient = botClient;
             _appSettings = appSettings;
             _googleSheets = new GoogleSheetsController(_appSettings);
+            _botMessagesData = _googleSheets.GetData(_appSettings.Value.GoogleSheetsRange);
             _botCourseData = _googleSheets.GetData(_appSettings.Value.GoogleSheetsCourseRange);
             _messageSender = new MessageSender(botClient);
             _standardButtons = _messageSender.GetStandardButtons();
@@ -67,7 +69,7 @@ namespace HRProBot.Controllers
                             break;
                         case 3:
                             courseMessage = _botCourseData[3][1].ToString();
-                            courseImg = _botCourseData[3][2].ToString();
+                            courseImg = _botCourseData[3][2].ToString();                            
                             appDbUpdate.UserDbUpdate(_user, _dbConnection);
                             _user.CurrentCourseStep++;
                             break;
@@ -126,6 +128,17 @@ namespace HRProBot.Controllers
                             {
                                 await _messageSender.SendPhotoWithCaption(_user.Id, _cantellationToken, courseImg, courseMessage, buttons);
                             }
+                        }
+
+                        //отдельная механика в середине курса с предложением по улучшению курса
+                        if (_user.CurrentCourseStep == 4)
+                        {
+                            buttons = new ReplyKeyboardMarkup(
+                                        new KeyboardButton("✍ Предложить тему"),
+                                        new KeyboardButton("🚩 К началу")
+                                       );
+                            buttons.ResizeKeyboard = true;
+                            await _messageSender.SendMessage(_user.Id, _cantellationToken, _botMessagesData[10][3].ToString(), buttons);
                         }
                     }
                 }

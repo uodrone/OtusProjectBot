@@ -287,6 +287,7 @@ namespace HRProBot.Controllers
                      await HandleAboutSolutionsCommand(ChatId, cancellationToken);                    
                     break;
                 case "🙋‍♂️ Задать вопрос эксперту":
+                case "✍ Предложить тему":
                 case "/ask":
                     _askFlag = true;
                     if (_user.DataCollectStep == 6)
@@ -506,7 +507,16 @@ namespace HRProBot.Controllers
                         _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                         return;
                     }
-                    
+
+                    if (_askFlag)
+                    {
+                        await _messageSender.SendMessage(ChatId, cancellationToken, _botMessagesData[7][3].ToString(), null);
+                    }
+                    else
+                    {
+                        await _messageSender.SendMessage(ChatId, cancellationToken, _botMessagesData[8][3].ToString(), null);
+                    }
+
                     await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введи свое имя:", _startButton);
                     _user.DataCollectStep = 1;
                     _appDbUpdate.UserDbUpdate(_user, _dbConnection);
@@ -621,7 +631,7 @@ namespace HRProBot.Controllers
                         }
                         else
                         {
-                            await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введи вопрос эксперту:", _startButton);
+                            await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введи вопрос или предложение эксперту:", _startButton);
                         }
                         _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                     }
@@ -639,7 +649,7 @@ namespace HRProBot.Controllers
                         } 
                         else
                         {
-                            await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введи вопрос эксперту:", _startButton);
+                            await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введи вопрос или предложение эксперту:", _startButton);
                         }
                         _appDbUpdate.UserDbUpdate(_user, _dbConnection);
                     }                    
@@ -660,9 +670,9 @@ namespace HRProBot.Controllers
                     else if (!string.IsNullOrEmpty(update.Message.Text))
                     {
                         // Игнорируем текст кнопки или команду "/ask"
-                        if (update.Message.Text == "🙋‍♂️ Задать вопрос эксперту" || update.Message.Text == "/ask")
+                        if (update.Message.Text == "🙋‍♂️ Задать вопрос эксперту" || update.Message.Text == "/ask" || update.Message.Text == "✍ Предложить тему")
                         {
-                            await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введи вопрос эксперту:", _startButton);
+                            await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введи вопрос или предложение эксперту:", _startButton);
                             // При вызове повторного вопроса прерываем выполнение, чтобы дождаться следующего ввода собственно вопроса
                             return;
                         }
@@ -683,10 +693,12 @@ namespace HRProBot.Controllers
                         }
 
                         foreach (string admin in _administrators) {
-                            await _messageSender.SendMessage(Int64.Parse(admin), cancellationToken, $"Новый вопрос от пользователя {_user.UserName} ({_user.Id}): {question.QuestionText}", _standardButtons);
+                            await _messageSender.SendMessage(Int64.Parse(admin), cancellationToken, 
+                                $"Новый вопрос или предложение от пользователя {_user.UserName} ({_user.Id}): {question.QuestionText}", _standardButtons);
                         }
 
-                        await _messageSender.SendMessage(ChatId, cancellationToken, $"Спасибо, вопрос получен!\nМожешь задать новый или перейти к другим разделам 🔽", _standardButtons);                        
+                        await _messageSender.SendMessage(ChatId, cancellationToken, 
+                            $"Спасибо, вопрос/предложение получено!\nМожешь задать новый или перейти к другим разделам 🔽", _standardButtons);
                         _user.DataCollectStep = 6;
                         _askFlag = false;
                         _appDbUpdate.UserDbUpdate(_user, _dbConnection);
