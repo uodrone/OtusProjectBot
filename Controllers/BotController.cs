@@ -17,14 +17,16 @@ namespace HRProBot.Controllers
         private static ITelegramBotClient _botClient;
         private static string _dbConnection;
         private static Logger _logger = LogManager.GetCurrentClassLogger();
+        private readonly CourseController _courseController;
         public BotController(IOptionsSnapshot<AppSettings> appSettings)
         {
 
             _tlgBotToken = appSettings.Value.TlgBotToken;
             _botClient = new TelegramBotClient(_tlgBotToken);
             _dbConnection = appSettings.Value.DBConnection;
-            var cts = new CancellationTokenSource();
-            var updateHandler = new UpdateHandler(appSettings, _botClient, _dbConnection);            
+            _courseController = new CourseController(_botClient, appSettings);
+            var cts = new CancellationTokenSource();            
+            var updateHandler = new UpdateHandler(_courseController, appSettings, _botClient, _dbConnection);            
 
 
             try

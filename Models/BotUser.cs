@@ -33,6 +33,7 @@ namespace HRProBot.Models
 
         [Column(Name = "DataCollectStep")]
         public int DataCollectStep { get; set; }
+
         [Column(Name = "IsCollectingData")]
         public bool IsCollectingData { get; set; } = false;
 
@@ -44,6 +45,10 @@ namespace HRProBot.Models
 
         [Column(Name = "IsVotingForCourse")]
         public bool IsVotingForCourse { get; set; } = false;
+
+        // Новое поле для хранения даты последней отправки урока
+        [Column(Name = "LastLessonSentDate"), Nullable]
+        public DateTime? LastLessonSentDate { get; set; }
 
         // Навигационное свойство для вопросов
         [Association(ThisKey = nameof(Id), OtherKey = nameof(UserQuestion.BotUserId))]

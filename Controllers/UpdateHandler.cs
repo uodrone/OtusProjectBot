@@ -1,21 +1,22 @@
 ﻿using HRProBot.Models;
+using HRProBot.Services;
+using LinqToDB;
+using LinqToDB.Common;
+using LinqToDB.Data;
+using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json.Linq;
+using NLog;
+using OfficeOpenXml;
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.IO;
+using System.Threading;
 using Telegram.Bot;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
-using OfficeOpenXml;
-using System.IO;
-using LinqToDB.Common;
-using LinqToDB;
-using Microsoft.AspNetCore.Mvc.RazorPages;
-using System.Collections.Concurrent;
-using System.Threading;
-using HRProBot.Services;
-using NLog;
-using System.Diagnostics;
 
 namespace HRProBot.Controllers
 {
@@ -38,9 +39,10 @@ namespace HRProBot.Controllers
         private static ReplyKeyboardMarkup _startButton;
         private static IOptionsSnapshot<AppSettings> _appSettings;
         private static Logger _logger = LogManager.GetCurrentClassLogger();
-        private static readonly ConcurrentDictionary<string, MediaGroup> _mediaGroups = new ConcurrentDictionary<string, MediaGroup>();
+        private static ConcurrentDictionary<string, MediaGroup> _mediaGroups = new ConcurrentDictionary<string, MediaGroup>();
+        private static CourseController _courseController;
 
-        public UpdateHandler(IOptionsSnapshot<AppSettings> appSettings, ITelegramBotClient botClient, string dbConnection)
+        public UpdateHandler(CourseController courseController, IOptionsSnapshot<AppSettings> appSettings, ITelegramBotClient botClient, string dbConnection)
         {
             try
             {
@@ -54,6 +56,7 @@ namespace HRProBot.Controllers
                 _standardButtons = _messageSender.GetStandardButtons();
                 _startButton = _messageSender.GetStartButton();
                 var cts = new CancellationTokenSource(); // прерыватель соединения с ботом
+                _courseController = courseController;
             }
             catch (Exception ex) {
                 _logger.Error(ex, $"Ошибка подключения к сервису: {ex.Message}");
@@ -95,6 +98,9 @@ namespace HRProBot.Controllers
                     db.Insert(_user);
                 }
             }
+
+            // Проверяем расписание курсов при каждом обращении (но не чаще раза в час)
+            await _courseController.CheckGlobalScheduleIfNeeded();
 
             // Если начали собирать данные, но они еще не собраны до конца - дособираем
             if (_user.IsCollectingData && _user.DataCollectStep > 0 && _user.DataCollectStep < 6)
@@ -399,20 +405,15 @@ namespace HRProBot.Controllers
         {
             try
             {
-                string Message = _botMessagesData[2][3].ToString();
-                DateTime date = DateTime.Now;
-                if (!_user.IsSubscribed)
+                using (var db = new DataConnection(_dbConnection))
                 {
-                    _user.IsSubscribed = true;
-                    _user.DateStartSubscribe = date;
-                    _appDbUpdate.UserDbUpdate(_user, _dbConnection);
-                    await _messageSender.SendMessage(chatId, cancellationToken, Message, _standardButtons);
-                    var courseController = new CourseController(_user, _botClient, _appSettings, _dbConnection);
-                    courseController.StartSendingMaterials();
-                }
-                else
-                {
-                    await _messageSender.SendMessage(chatId, cancellationToken, "Ты уже подписан(а) на курс. Обучающие материалы выходят каждую неделю. Следи за обновлениями", _startButton);
+                    var user = await db.GetTable<BotUser>()
+                        .FirstOrDefaultAsync(u => u.Id == chatId);
+
+                    if (user != null)
+                    {
+                        await _courseController.SubscribeUserToCourse(user);
+                    }
                 }
             }
             catch (Exception ex)
