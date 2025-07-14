@@ -66,31 +66,27 @@ namespace HRProBot.Controllers
             }
         }
 
-        // Метод для проверки, нужно ли делать глобальную проверку (вызывается при каждом сообщении)
-        public async Task CheckGlobalScheduleIfNeeded()
+        // Быстрая проверка конкретного пользователя при получении сообщения (подстраховка)
+        public async Task CheckUserOnMessageAsync(long userId)
         {
-            lock (_lockObject)
+            try
             {
-                // Если последняя проверка была менее часа назад, пропускаем
-                if (DateTime.Now - _lastGlobalCheck < TimeSpan.FromSeconds(10))
+                using (var db = new DataConnection(ProviderName.PostgreSQL, _dbConnection))
                 {
-                    return;
-                }
-                _lastGlobalCheck = DateTime.Now;
-            }
+                    var user = await db.GetTable<BotUser>()
+                        .Where(u => u.Id == userId && u.IsSubscribed && u.DateStartSubscribe.HasValue)
+                        .FirstOrDefaultAsync();
 
-            // Запускаем проверку в фоновом режиме
-            _ = Task.Run(async () =>
+                    if (user != null)
+                    {
+                        await CheckAndSendLessonForUser(user);
+                    }
+                }
+            }
+            catch (Exception ex)
             {
-                try
-                {
-                    await CheckAllSubscribedUsersAsync();
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Ошибка при фоновой проверке: {ex.Message}");
-                }
-            });
+                _logger.Error(ex, $"Ошибка при проверке пользователя {userId} после сообщения: {ex.Message}");
+            }
         }
 
         // Метод для проверки и отправки урока конкретному пользователю
@@ -101,15 +97,16 @@ namespace HRProBot.Controllers
                 // Определяем, когда должен быть отправлен следующий урок
                 DateTime nextLessonDate = CalculateNextLessonDate(user);
 
-                // Если время пришло, отправляем урок
-                if (DateTime.Now >= nextLessonDate && user.CurrentCourseStep <= 7)
+                // Если время пришло и курс не завершен, отправляем урок
+                if (DateTime.Now >= nextLessonDate && user.CurrentCourseStep < 8)
                 {
+                    Console.WriteLine($"Отправляем урок пользователю {user.Id}, шаг {user.CurrentCourseStep}");
                     await SendTrainingCourseMessage(user);
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Ошибка при отправке урока пользователю {user.Id}: {ex.Message}");
+                _logger.Error(ex, $"Ошибка при отправке урока пользователю {user.Id}: {ex.Message}");
             }
         }
 

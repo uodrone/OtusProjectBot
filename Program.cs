@@ -16,7 +16,7 @@ namespace HRProBot
             builder.Services.Configure<AppSettings>(builder.Configuration.GetSection("AppSettings"));
 
             // Регистрируем Telegram Bot Client
-            builder.Services.AddSingleton<ITelegramBotClient>(provider =>
+            builder.Services.AddScoped<ITelegramBotClient>(provider =>
             {
                 var appSettings = provider.GetRequiredService<IOptionsSnapshot<AppSettings>>();
                 return new TelegramBotClient(appSettings.Value.TlgBotToken);

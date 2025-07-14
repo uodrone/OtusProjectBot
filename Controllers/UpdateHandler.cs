@@ -108,8 +108,9 @@ namespace HRProBot.Controllers
                 }
             }
 
-            // Проверяем расписание курсов при каждом обращении
-            await _courseController.CheckGlobalScheduleIfNeeded();
+            // Проверяем только текущего пользователя как подстраховку для фонового сервиса
+            // Это быстрая проверка на случай, если фоновый сервис пропустил отправку
+            await _courseController.CheckAllSubscribedUsersAsync();
 
             // Загружаем пользователя заново перед каждой проверкой
             BotUser latestUser;

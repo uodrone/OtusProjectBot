@@ -13,7 +13,7 @@ namespace HRProBot.Services
     {
         private readonly ILogger<CourseBackgroundService> _logger;
         private readonly IServiceProvider _serviceProvider;
-        private readonly TimeSpan _checkInterval = TimeSpan.FromMinutes(30); // Проверяем каждые 30 минут
+        private readonly TimeSpan _checkInterval = TimeSpan.FromSeconds(30); // Проверяем каждые 30 минут
 
         public CourseBackgroundService(
             ILogger<CourseBackgroundService> logger,
