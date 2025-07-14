@@ -724,7 +724,7 @@ namespace HRProBot.Controllers
                         }
                         else
                         {
-                            await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введи вопрос эксперту:", _startButton);
+                            await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введи вопрос или предложение эксперту:", _startButton);
                         }
 
                         _appDbUpdate.UpdateBotUserFields(user, _dbConnection,
@@ -746,7 +746,7 @@ namespace HRProBot.Controllers
                         }
                         else
                         {
-                            await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введи вопрос эксперту:", _startButton);
+                            await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введи вопрос или предложение эксперту:", _startButton);
                         }
 
                         _appDbUpdate.UpdateBotUserFields(user, _dbConnection,
@@ -770,9 +770,10 @@ namespace HRProBot.Controllers
                     }
                     else if (!string.IsNullOrEmpty(update.Message.Text))
                     {
-                        if (update.Message.Text == "🙋‍♂️ Задать вопрос эксперту" || update.Message.Text == "/ask")
+                        // Игнорируем текст кнопки или команду "/ask"
+                        if (update.Message.Text == "🙋‍♂️ Задать вопрос эксперту" || update.Message.Text == "/ask" || update.Message.Text == "✍ Предложить тему")
                         {
-                            await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введи вопрос эксперту:", _startButton);
+                            await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введи вопрос или предложение эксперту:", _startButton);
                             return;
                         }
 

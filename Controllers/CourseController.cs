@@ -225,7 +225,7 @@ namespace HRProBot.Controllers
 
                         // Обновляем пользователя в базе данных
                         user.LastLessonSentDate = DateTime.Now;
-                        if (user.CurrentCourseStep < 7)
+                        if (user.CurrentCourseStep < 8)
                         {
                             user.CurrentCourseStep++;
                         }
