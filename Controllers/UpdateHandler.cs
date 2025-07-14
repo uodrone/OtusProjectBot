@@ -582,8 +582,10 @@ namespace HRProBot.Controllers
 
                     await _messageSender.SendMessage(ChatId, cancellationToken, "Пожалуйста, введи свое имя:", _startButton);
                     user.DataCollectStep = 1;
+                    user.IsCollectingData = true;
                     _appDbUpdate.UpdateBotUserFields(user, _dbConnection,
-                        u => u.DataCollectStep);
+                        u => u.DataCollectStep,
+                        u => u.IsCollectingData);
                     break;
 
                 case 1:
