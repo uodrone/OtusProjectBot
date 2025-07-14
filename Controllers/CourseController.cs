@@ -212,6 +212,17 @@ namespace HRProBot.Controllers
                             }
                         }
 
+                        //отдельная механика в середине курса с предложением по улучшению курса
+                        if (user.CurrentCourseStep == 4)
+                        {
+                            buttons = new ReplyKeyboardMarkup(
+                                        new KeyboardButton("✍ Предложить тему"),
+                                        new KeyboardButton("🚩 К началу")
+                                       );
+                            buttons.ResizeKeyboard = true;
+                            await _messageSender.SendMessage(user.Id, _cancellationToken, _botMessagesData[10][3].ToString(), buttons);
+                        }
+
                         // Обновляем пользователя в базе данных
                         user.LastLessonSentDate = DateTime.Now;
                         if (user.CurrentCourseStep < 8)

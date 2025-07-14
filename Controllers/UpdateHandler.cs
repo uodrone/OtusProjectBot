@@ -318,6 +318,7 @@ namespace HRProBot.Controllers
                     break;
 
                 case "🙋‍♂️ Задать вопрос эксперту":
+                case "✍ Предложить тему":
                 case "/ask":
                     _askFlag = true;
 
