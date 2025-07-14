@@ -22,6 +22,7 @@ namespace HRProBot.Controllers
         private readonly ITelegramBotClient _botClient;
         private readonly IOptionsSnapshot<AppSettings> _appSettings;
         private readonly GoogleSheetsController _googleSheets;
+        private readonly IList<IList<object>> _botMessagesData;
         private readonly IList<IList<object>> _botCourseData;
         private readonly MessageSender _messageSender;
         private readonly ReplyKeyboardMarkup _standardButtons;
@@ -38,6 +39,7 @@ namespace HRProBot.Controllers
             _appSettings = appSettings;
             _googleSheets = new GoogleSheetsController(_appSettings);
             _botCourseData = _googleSheets.GetData(_appSettings.Value.GoogleSheetsCourseRange);
+            _botMessagesData = _googleSheets.GetData(_appSettings.Value.GoogleSheetsRange);
             _messageSender = new MessageSender(botClient);
             _standardButtons = _messageSender.GetStandardButtons();
             _startButton = _messageSender.GetStartButton();
@@ -184,6 +186,9 @@ namespace HRProBot.Controllers
                             buttons.ResizeKeyboard = true;
                             // Активируем флаг голосования
                             user.IsVotingForCourse = true;
+
+                            // Устанавливаем CurrentCourseStep = 8, чтобы курс считался завершённым
+                            user.CurrentCourseStep = 8;
                             break;
                     }
 

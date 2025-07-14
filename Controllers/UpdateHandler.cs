@@ -52,7 +52,7 @@ namespace HRProBot.Controllers
                 _googleSheets = new GoogleSheetsController(_appSettings);
                 _botClient = botClient;
                 _dbConnection = dbConnection;
-                _botMessagesData = _googleSheets.GetData(_appSettings.Value.GoogleSheetsRange);                
+                _botMessagesData = _googleSheets.GetData(_appSettings.Value.GoogleSheetsRange);              
                 _messageSender = new MessageSender(botClient);
                 _standardButtons = _messageSender.GetStandardButtons();
                 _startButton = _messageSender.GetStartButton();
