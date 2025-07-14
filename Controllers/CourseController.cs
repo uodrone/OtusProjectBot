@@ -117,16 +117,7 @@ namespace HRProBot.Controllers
         {
             if (user.LastLessonSentDate.HasValue)
             {
-                // Если это НЕ финальный шаг (курс ещё не закончен), добавляем интервал
-                if (user.CurrentCourseStep < 7)
-                {
-                    return user.LastLessonSentDate.Value.AddSeconds(37); // или .AddDays(7)
-                }
-                else
-                {
-                    // Для 7-го шага — отправляем немедленно
-                    return DateTime.Now;
-                }
+                return user.LastLessonSentDate.Value.AddSeconds(7); // или .AddDays(7)
             }
             else
             {
@@ -172,24 +163,6 @@ namespace HRProBot.Controllers
                             courseMessage = _botCourseData[6][1].ToString();
                             courseImg = _botCourseData[6][2].ToString();
                             break;
-                        case 7:
-                            courseMessage = _botCourseData[7][1].ToString();
-                            courseImg = _botCourseData[7][2].ToString();
-                            buttons = new ReplyKeyboardMarkup(
-                                new[] {
-                                    new KeyboardButton("5️⃣"),
-                                    new KeyboardButton("4️⃣"),
-                                    new KeyboardButton("3️⃣"),
-                                    new KeyboardButton("2️⃣"),
-                                    new KeyboardButton("1️⃣")
-                                });
-                            buttons.ResizeKeyboard = true;
-                            // Активируем флаг голосования
-                            user.IsVotingForCourse = true;
-
-                            // Устанавливаем CurrentCourseStep = 8, чтобы курс считался завершённым
-                            user.CurrentCourseStep = 8;
-                            break;
                     }
 
                     if (courseMessage != null)
@@ -223,9 +196,40 @@ namespace HRProBot.Controllers
                             await _messageSender.SendMessage(user.Id, _cancellationToken, _botMessagesData[10][3].ToString(), buttons);
                         }
 
+                        //отдельная механика для последнего урока
+                        if (user.CurrentCourseStep == 6)
+                        {
+                            courseMessage = _botCourseData[7][1].ToString();
+                            courseImg = _botCourseData[7][2].ToString();
+                            buttons = new ReplyKeyboardMarkup(
+                                new[] {
+                                    new KeyboardButton("5️⃣"),
+                                    new KeyboardButton("4️⃣"),
+                                    new KeyboardButton("3️⃣"),
+                                    new KeyboardButton("2️⃣"),
+                                    new KeyboardButton("1️⃣")
+                                });
+                            buttons.ResizeKeyboard = true;
+                            // Активируем флаг голосования
+                            user.IsVotingForCourse = true;
+
+                            // Устанавливаем CurrentCourseStep = 7, чтобы курс считался завершённым
+                            user.CurrentCourseStep = 7;
+
+                            var mediaGroup = await _messageSender.ConvertImgStringToMediaListAsync(courseImg);
+                            if (mediaGroup.Count > 1)
+                            {
+                                await _messageSender.SendMediaGroupWithCaption(user.Id, _cancellationToken, mediaGroup, courseMessage, buttons);
+                            }
+                            else
+                            {
+                                await _messageSender.SendPhotoWithCaption(user.Id, _cancellationToken, courseImg, courseMessage, buttons);
+                            }
+                        }
+
                         // Обновляем пользователя в базе данных
                         user.LastLessonSentDate = DateTime.Now;
-                        if (user.CurrentCourseStep < 8)
+                        if (user.CurrentCourseStep < 7)
                         {
                             user.CurrentCourseStep++;
                         }
