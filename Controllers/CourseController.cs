@@ -50,7 +50,7 @@ namespace HRProBot.Controllers
         {
             try
             {
-                using (var db = new DataConnection(_dbConnection))
+                using (var db = new DataConnection(ProviderName.PostgreSQL, _dbConnection))
                 {
                     var subscribedUsers = await db.GetTable<BotUser>()
                         .Where(u => u.IsSubscribed && u.DateStartSubscribe.HasValue)
@@ -72,7 +72,7 @@ namespace HRProBot.Controllers
             lock (_lockObject)
             {
                 // Если последняя проверка была менее часа назад, пропускаем
-                if (DateTime.Now - _lastGlobalCheck < TimeSpan.FromHours(1))
+                if (DateTime.Now - _lastGlobalCheck < TimeSpan.FromSeconds(10))
                 {
                     return;
                 }
@@ -129,7 +129,7 @@ namespace HRProBot.Controllers
         }
 
         // Отправка урока конкретному пользователю
-        private async Task SendTrainingCourseMessage(BotUser user)
+        private async Task<BotUser> SendTrainingCourseMessage(BotUser user)
         {
             string courseMessage = null;
             string courseImg = null;
@@ -212,27 +212,33 @@ namespace HRProBot.Controllers
 
                         try
                         {
-                            appDbUpdate.UserDbUpdate(user, _dbConnection);
+                            appDbUpdate.UpdateBotUserFields(user, _dbConnection);
+                            return user;
                         }
                         catch (PostgresException pex)
                         {
                             _logger.Error(pex, $"Ошибка PostgreSQL: {pex.Message}");
+                            throw;
                         }
                         catch (Exception ex)
                         {
                             _logger.Error(ex, $"Неизвестная ошибка: {ex.Message}");
+                            throw;
                         }
                     }
                 }
+
+                return user;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Ошибка при отправке урока: {ex.Message}");
+                _logger.Error(ex, $"Ошибка при отправке урока: {ex.Message}");
+                throw;
             }
         }
 
         // Метод для подписки пользователя на курс
-        public async Task SubscribeUserToCourse(BotUser user)
+        public async Task<BotUser> SubscribeUserToCourse(BotUser user)
         {
             try
             {
@@ -245,13 +251,10 @@ namespace HRProBot.Controllers
                     user.CurrentCourseStep = 1;
 
                     var appDbUpdate = new AppDBUpdate();
-                    appDbUpdate.UserDbUpdate(user, _dbConnection);
-
-                    string message = _botCourseData[1][2].ToString();
-                    await _messageSender.SendMessage(user.Id, _cancellationToken, message, _standardButtons);
+                    appDbUpdate.UpdateBotUserFields(user, _dbConnection);
 
                     // Отправляем первый урок сразу
-                    await SendTrainingCourseMessage(user);
+                    user = await SendTrainingCourseMessage(user);
                 }
                 else
                 {
@@ -259,10 +262,13 @@ namespace HRProBot.Controllers
                         "Ты уже подписан(а) на курс. Обучающие материалы выходят каждую неделю. Следи за обновлениями",
                         _startButton);
                 }
+
+                return user;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Ошибка при подписке пользователя: {ex.Message}");
+                _logger.Error(ex, $"Ошибка при подписке пользователя: {ex.Message}");                
+                throw;
             }
         }
 

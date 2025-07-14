@@ -1,66 +1,69 @@
 ﻿using HRProBot.Models;
 using LinqToDB;
+using LinqToDB.Data;
 using NLog;
-using Telegram.Bot;
+using System.Linq.Expressions;
+using Telegram.Bot.Types;
 
 namespace HRProBot.Controllers
 {
     public class AppDBUpdate
     {
         private static Logger _logger = LogManager.GetCurrentClassLogger();
+
         /// <summary>
-        /// Обновляет запись в таблице базы данных.
+        /// Обновляет указанные поля пользователя в БД.
         /// </summary>
-        /// <typeparam name="T">Тип модели, соответствующей таблице.</typeparam>
-        /// <param name="entity">Объект модели для обновления.</param>
-        /// <param name="dbConnection">Строка подключения к базе данных.</param>
-        public void UserDbUpdate<T>(T entity, string dbConnection) where T : class
+        public async Task UpdateBotUserFields(BotUser user, string dbConnection, params Expression<Func<BotUser, object>>[] fields)
         {
             try
             {
-                using (var db = new LinqToDB.Data.DataConnection(ProviderName.PostgreSQL, dbConnection))
+                using (var db = new DataConnection(ProviderName.PostgreSQL, dbConnection))
                 {
-                    // Получаем первичный ключ сущности
-                    var primaryKey = GetPrimaryKey(db, entity);
+                    // Используем обновление с явным указанием полей
+                    await db.GetTable<BotUser>()
+                        .Where(u => u.Id == user.Id)
+                        .Set(u => u.IsSubscribed, user.IsSubscribed)
+                        .Set(u => u.DateStartSubscribe, user.DateStartSubscribe)
+                        .Set(u => u.LastLessonSentDate, user.LastLessonSentDate)
+                        .Set(u => u.CurrentCourseStep, user.CurrentCourseStep)
+                        .Set(u => u.IsVotingForCourse, user.IsVotingForCourse)
+                        .Set(u => u.UserName, user.UserName)
+                        .Set(u => u.FirstName, user.FirstName)
+                        .Set(u => u.LastName, user.LastName)
+                        .Set(u => u.Organization, user.Organization)
+                        .Set(u => u.Phone, user.Phone)
+                        .Set(u => u.DataCollectStep, user.DataCollectStep)
+                        .Set(u => u.IsCollectingData, user.IsCollectingData)
+                        .Set(u => u.CourseAssesment, user.CourseAssesment)
+                        .UpdateAsync();
 
-                    // Ищем запись в таблице по первичному ключу
-                    var existingEntity = db.GetTable<T>().FirstOrDefault(primaryKey);
+                    _logger.Info($"Пользователь {user.Id} успешно обновлен (асинхронный метод Set)");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, $"Ошибка обновления БД (асинхронный метод Set): {ex.Message}");
+                throw;
+            }
+        }
 
-                    if (existingEntity != null)
-                    {
-                        // Обновляем запись
-                        db.Update(entity);
-                    }
+        /// <summary>
+        /// Полное обновление пользователя (если нужно).
+        /// </summary>
+        public void UserDbUpdate(BotUser user, string dbConnection)
+        {
+            try
+            {
+                using (var db = new DataConnection(ProviderName.PostgreSQL, dbConnection))
+                {
+                    db.Update(user);
                 }
             }
             catch (Exception ex)
             {
                 _logger.Error(ex, $"Ошибка обновления БД: {ex.Message}");
-            }            
-        }
-
-        /// <summary>
-        /// Получает условие для поиска записи по первичному ключу.
-        /// </summary>
-        /// <typeparam name="T">Тип модели.</typeparam>
-        /// <param name="db">Контекст базы данных.</param>
-        /// <param name="entity">Объект модели.</param>
-        /// <returns>Условие для поиска по первичному ключу.</returns>
-        private Func<T, bool> GetPrimaryKey<T>(LinqToDB.Data.DataConnection db, T entity) where T : class
-        {
-            var table = db.MappingSchema.GetEntityDescriptor(typeof(T));
-            var primaryKey = table.Columns.FirstOrDefault(c => c.IsPrimaryKey);
-
-            if (primaryKey == null)
-            {
-                throw new InvalidOperationException($"Таблица {typeof(T).Name} не имеет первичного ключа.");
             }
-
-            // Получаем значение первичного ключа из сущности
-            var primaryKeyValue = primaryKey.MemberAccessor.Getter(entity);
-
-            // Создаем условие для поиска по первичному ключу
-            return x => primaryKey.MemberAccessor.Getter(x).Equals(primaryKeyValue);
         }
     }
 }
