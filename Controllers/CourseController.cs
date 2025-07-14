@@ -115,13 +115,20 @@ namespace HRProBot.Controllers
         {
             if (user.LastLessonSentDate.HasValue)
             {
-                // Если уже был отправлен урок, следующий урок через 7 дней
-                return user.LastLessonSentDate.Value.AddSeconds(37);
+                // Если это НЕ финальный шаг (курс ещё не закончен), добавляем интервал
+                if (user.CurrentCourseStep < 7)
+                {
+                    return user.LastLessonSentDate.Value.AddSeconds(37); // или .AddDays(7)
+                }
+                else
+                {
+                    // Для 7-го шага — отправляем немедленно
+                    return DateTime.Now;
+                }
             }
             else
             {
-                // Если урок еще не отправлялся, используем дату подписки
-                return user.DateStartSubscribe.Value;
+                return user.DateStartSubscribe ?? DateTime.Now;
             }
         }
 
@@ -167,13 +174,13 @@ namespace HRProBot.Controllers
                             courseMessage = _botCourseData[7][1].ToString();
                             courseImg = _botCourseData[7][2].ToString();
                             buttons = new ReplyKeyboardMarkup(
-                                        new[] {
-                                            new KeyboardButton("5️⃣"),
-                                            new KeyboardButton("4️⃣"),
-                                            new KeyboardButton("3️⃣"),
-                                            new KeyboardButton("2️⃣"),
-                                            new KeyboardButton("1️⃣")
-                                        });
+                                new[] {
+                                    new KeyboardButton("5️⃣"),
+                                    new KeyboardButton("4️⃣"),
+                                    new KeyboardButton("3️⃣"),
+                                    new KeyboardButton("2️⃣"),
+                                    new KeyboardButton("1️⃣")
+                                });
                             buttons.ResizeKeyboard = true;
                             // Активируем флаг голосования
                             user.IsVotingForCourse = true;
@@ -202,7 +209,7 @@ namespace HRProBot.Controllers
 
                         // Обновляем пользователя в базе данных
                         user.LastLessonSentDate = DateTime.Now;
-                        if (user.CurrentCourseStep < 7)
+                        if (user.CurrentCourseStep < 8)
                         {
                             user.CurrentCourseStep++;
                         }
