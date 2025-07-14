@@ -4,6 +4,8 @@ using HRProBot.Services;
 using LinqToDB;
 using LinqToDB.Data;
 using Microsoft.Extensions.Options;
+using NLog;
+using Npgsql;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -28,6 +30,7 @@ namespace HRProBot.Controllers
         private readonly CancellationToken _cancellationToken;
         private static DateTime _lastGlobalCheck = DateTime.MinValue;
         private static readonly object _lockObject = new object();
+        private static Logger _logger = LogManager.GetCurrentClassLogger();
 
         public CourseController(ITelegramBotClient botClient, IOptionsSnapshot<AppSettings> appSettings)
         {
@@ -116,7 +119,7 @@ namespace HRProBot.Controllers
             if (user.LastLessonSentDate.HasValue)
             {
                 // Если уже был отправлен урок, следующий урок через 7 дней
-                return user.LastLessonSentDate.Value.AddDays(7);
+                return user.LastLessonSentDate.Value.AddSeconds(37);
             }
             else
             {
@@ -207,7 +210,18 @@ namespace HRProBot.Controllers
                             user.CurrentCourseStep++;
                         }
 
-                        appDbUpdate.UserDbUpdate(user, _dbConnection);
+                        try
+                        {
+                            appDbUpdate.UserDbUpdate(user, _dbConnection);
+                        }
+                        catch (PostgresException pex)
+                        {
+                            _logger.Error(pex, $"Ошибка PostgreSQL: {pex.Message}");
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.Error(ex, $"Неизвестная ошибка: {ex.Message}");
+                        }
                     }
                 }
             }
@@ -233,7 +247,7 @@ namespace HRProBot.Controllers
                     var appDbUpdate = new AppDBUpdate();
                     appDbUpdate.UserDbUpdate(user, _dbConnection);
 
-                    string message = _botCourseData[2][3].ToString();
+                    string message = _botCourseData[1][2].ToString();
                     await _messageSender.SendMessage(user.Id, _cancellationToken, message, _standardButtons);
 
                     // Отправляем первый урок сразу

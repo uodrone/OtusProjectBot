@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json.Linq;
 using NLog;
+using Npgsql;
 using OfficeOpenXml;
 using System.Collections.Concurrent;
 using System.Diagnostics;
@@ -82,8 +83,19 @@ namespace HRProBot.Controllers
 
             using (var db = new LinqToDB.Data.DataConnection(ProviderName.PostgreSQL, _dbConnection))
             {
-                var table = db.GetTable<BotUser>();
-                _user = table.Where(x => x.Id == userParams.Id).FirstOrDefault();
+                try
+                {
+                    var table = db.GetTable<BotUser>();
+                    _user = await table.Where(x => x.Id == userParams.Id).FirstOrDefaultAsync(cancellationToken);
+                }
+                catch (PostgresException pex)
+                {
+                    _logger.Error(pex, $"Ошибка PostgreSQL: {pex.Message}");
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error(ex, $"Неизвестная ошибка: {ex.Message}");
+                }
 
                 if (_user == null)
                 {
@@ -405,10 +417,10 @@ namespace HRProBot.Controllers
         {
             try
             {
-                using (var db = new DataConnection(_dbConnection))
+                using (var db = new DataConnection(ProviderName.PostgreSQL, _dbConnection))
                 {
                     var user = await db.GetTable<BotUser>()
-                        .FirstOrDefaultAsync(u => u.Id == chatId);
+                        .FirstOrDefaultAsync(u => u.Id == chatId, cancellationToken);
 
                     if (user != null)
                     {
