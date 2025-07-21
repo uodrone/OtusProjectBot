@@ -117,7 +117,7 @@ namespace HRProBot.Controllers
         {
             if (user.LastLessonSentDate.HasValue)
             {
-                return user.LastLessonSentDate.Value.AddSeconds(7); // или .AddDays(7)
+                return user.LastLessonSentDate.Value.AddDays(7); // или .AddSeconds(7)
             }
             else
             {

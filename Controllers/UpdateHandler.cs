@@ -189,7 +189,7 @@ namespace HRProBot.Controllers
                     {
                         try
                         {
-                            var timeout = TimeSpan.FromSeconds(5);
+                            var timeout = TimeSpan.FromHours(5);
                             var sw = Stopwatch.StartNew();
 
                             while (sw.Elapsed < timeout)
