@@ -175,12 +175,36 @@ namespace HRProBot.Services
         {
             try
             {
+                InputFile inputFile;
+
+                // 🔥 Если URL — скачиваем в MemoryStream
+                if (Uri.TryCreate(fileId, UriKind.Absolute, out var uri) &&
+                    (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+                {
+                    using var httpClient = new HttpClient();
+                    httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+                    httpClient.DefaultRequestHeaders.Referrer = new Uri("https://www.directum.ru");
+
+                    var imageBytes = await httpClient.GetByteArrayAsync(fileId);
+                    var fileName = Path.GetFileName(new Uri(fileId).LocalPath);
+
+                    // ✅ MemoryStream с байтами — данные в памяти, поток можно безопасно передать
+                    var memoryStream = new MemoryStream(imageBytes);
+                    inputFile = InputFile.FromStream(memoryStream, fileName);
+                }
+                else
+                {
+                    inputFile = InputFile.FromString(fileId);
+                }
+
+                // 🔥 Логика отправки
                 int maxCaptionLength = 1024;
+
                 if (string.IsNullOrEmpty(caption) || caption.Length <= maxCaptionLength)
                 {
                     await _botClient.SendPhotoAsync(
                         chatId: chatId,
-                        photo: fileId,
+                        photo: inputFile,
                         caption: caption,
                         parseMode: ParseMode.Html,
                         replyMarkup: buttons,
@@ -188,23 +212,23 @@ namespace HRProBot.Services
                     return;
                 }
 
+                // Разбиваем длинную подпись
                 int splitPosition = FindSplitPosition(caption, maxCaptionLength);
-                if (splitPosition == -1)
-                {
-                    splitPosition = maxCaptionLength;
-                }
+                if (splitPosition == -1) splitPosition = maxCaptionLength;
 
                 string photoCaption = caption.Substring(0, splitPosition).Trim();
                 string remainingText = caption.Substring(splitPosition).Trim();
 
+                // Отправляем фото с первой частью подписи
                 await _botClient.SendPhotoAsync(
                     chatId: chatId,
-                    photo: fileId,
+                    photo: inputFile,
                     caption: photoCaption,
                     parseMode: ParseMode.Html,
                     replyMarkup: buttons,
                     cancellationToken: cancellationToken);
 
+                // Остаток текста — отдельным сообщением
                 if (!string.IsNullOrEmpty(remainingText))
                 {
                     await SendMessage(chatId, cancellationToken, remainingText, buttons);
